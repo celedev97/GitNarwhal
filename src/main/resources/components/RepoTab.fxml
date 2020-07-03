@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.TitledPane?>
+<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
+<?import org.kordamp.ikonli.javafx.StackedFontIcon?>
+
+<VBox prefHeight="578.0" prefWidth="1325.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1">
+   <children>
+      <BorderPane prefHeight="65.0" prefWidth="718.0" style="-fx-background-color: lightgrey;">
+         <left>
+            <VBox prefHeight="67.0" prefWidth="269.0" BorderPane.alignment="CENTER">
+               <children>
+                  <Label maxWidth="1000.0" text="Branch" />
+                  <ComboBox fx:id="branchComboBox" prefHeight="1000.0" prefWidth="1000.0" VBox.vgrow="ALWAYS" />
+               </children>
+               <padding>
+                  <Insets bottom="5.0" left="5.0" right="5.0" top="5.0" />
+               </padding>
+            </VBox>
+         </left>
+         <center>
+            <HBox prefHeight="67.0" prefWidth="935.0" BorderPane.alignment="CENTER">
+               <children>
+                  <Button contentDisplay="BOTTOM" text="Commit" onAction="#commit">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-plus-circle-outline" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Separator minWidth="20.0" orientation="VERTICAL" prefHeight="0.0" prefWidth="0.0" visible="false" />
+                  <Button contentDisplay="BOTTOM" text="Pull">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-arrow-down-bold-circle-outline" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Button contentDisplay="BOTTOM" text="Push">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-arrow-up-bold-circle-outline" iconSize="38" />
+                     </graphic>
+                  </Button>
+                  <Button contentDisplay="BOTTOM" text="Fetch">
+                     <graphic>
+                        <StackedFontIcon>
+                           <children>
+                              <FontIcon iconLiteral="mdi-refresh" iconSize="24" selectionEnd="0" selectionStart="0" stroke="BLACK" strokeLineJoin="BEVEL">
+                                 <font>
+                                    <Font name="System Bold" size="12.0" />
+                                 </font>
+                              </FontIcon>
+                              <FontIcon iconLiteral="mdi-checkbox-blank-circle-outline" iconSize="38" />
+                           </children>
+                        </StackedFontIcon>
+                     </graphic>
+                  </Button>
+                  <Separator minWidth="20.0" orientation="VERTICAL" prefHeight="0.0" prefWidth="0.0" visible="false" />
+                  <Button contentDisplay="BOTTOM" text="Branch">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-source-branch" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Button contentDisplay="BOTTOM" text="Merge">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-source-merge" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Separator minWidth="20.0" orientation="VERTICAL" prefHeight="0.0" prefWidth="0.0" visible="false" />
+                  <Button contentDisplay="BOTTOM" text="Stash">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-inbox-arrow-down" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Separator minWidth="20.0" orientation="VERTICAL" prefHeight="0.0" prefWidth="0.0" visible="false" />
+                  <Button contentDisplay="BOTTOM" text="Discard">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-rotate-left" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Button contentDisplay="BOTTOM" text="Tag">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-tag-text-outline" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Separator minWidth="20.0" orientation="VERTICAL" prefHeight="0.0" prefWidth="0.0" visible="false" />
+               </children>
+               <opaqueInsets>
+                  <Insets />
+               </opaqueInsets>
+            </HBox>
+         </center>
+         <right>
+            <HBox prefHeight="100.0" prefWidth="200.0" BorderPane.alignment="CENTER">
+               <children>
+                  <Button contentDisplay="BOTTOM" text="Remote">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-earth" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Button contentDisplay="BOTTOM" text="Terminal">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-code-greater-than" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Button contentDisplay="BOTTOM" text="Path">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-folder-outline" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Button contentDisplay="BOTTOM" text="Settings">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-settings" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+               </children>
+            </HBox>
+         </right>
+      </BorderPane>
+      <SplitPane dividerPositions="0.20483749055177627" prefHeight="160.0" prefWidth="200.0" VBox.vgrow="ALWAYS">
+        <items>
+            <VBox prefHeight="200.0" prefWidth="100.0" SplitPane.resizableWithParent="false">
+               <children>
+                  <TitledPane animated="false" text="untitled">
+                    <content>
+                      <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0" />
+                    </content>
+                  </TitledPane>
+                  <TitledPane animated="false" text="untitled">
+                     <content>
+                        <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0" />
+                     </content>
+                  </TitledPane>
+                  <TitledPane animated="false" text="untitled">
+                     <content>
+                        <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0" />
+                     </content>
+                  </TitledPane>
+                  <TitledPane animated="false" text="untitled">
+                     <content>
+                        <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0" />
+                     </content>
+                  </TitledPane>
+               </children>
+            </VBox>
+            <SplitPane dividerPositions="0.693516699410609" orientation="VERTICAL" prefHeight="200.0" prefWidth="160.0">
+              <items>
+                <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="100.0" prefWidth="160.0" />
+                <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="100.0" prefWidth="160.0" />
+              </items>
+            </SplitPane>
+        </items>
+      </SplitPane>
+   </children>
+</VBox>
