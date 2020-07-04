@@ -7,9 +7,13 @@ import javafx.scene.Parent
 import javafx.scene.Scene
 import javafx.stage.Stage
 import java.util.*
+import java.util.jar.Manifest
 
 
 fun main(){
+    var manifestAttributes = Manifest(GitNarwhal::class.java.classLoader.getResource("META-INF/MANIFEST.MF").openStream()).getMainAttributes();
+    var version = manifestAttributes.getValue("Specification-Version")
+    println("RUNNING GITNARWHAL "+version)
     Application.launch(GitNarwhal::class.java)
 }
 
