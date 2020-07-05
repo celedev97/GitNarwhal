@@ -1,32 +1,61 @@
 package com.gitnarwhal.components
 
+import com.gitnarwhal.Git
 import javafx.fxml.FXML
 import javafx.fxml.FXMLLoader
 import javafx.fxml.Initializable
-import javafx.scene.Parent
 import javafx.scene.control.Tab
 import javafx.scene.layout.VBox
-import java.io.File
 import java.net.URL
-import java.nio.file.Files
 import java.util.*
 
-class RepoTab(path: String) : Tab("")  {
-    var path:String;
+class RepoTab : Tab(""), Initializable  {
 
-    init {
-        this.path = path
-        var fxmlLoader = FXMLLoader(javaClass.getResource("/components/RepoTab.fxml"))
-        fxmlLoader.setController(this)
+    //region FIELDS
+    var path:String = ""
+        set(value){
+            field = value;
+            text = value.split("\\","/").last()
+        }
+    //endregion
+    //region FXML FIELDS
 
-        content = fxmlLoader.load<VBox>()
 
-        text = path.split('\\','/').last()
+    //endregion
+
+
+    override fun initialize(location: URL?, resources: ResourceBundle?) {
+
     }
 
     @FXML
     fun commit(){
         println("COMMIT!!!: $path")
+    }
+
+    fun refresh(){
+
+    }
+
+    fun fetch(){
+        println(Git("/usr/bin/git").git)
+    }
+
+
+
+    companion object{
+        fun create(path: String) : RepoTab{
+            //loading RepoTab from FXML
+            var fxmlLoader = FXMLLoader(RepoTab::class.java.getResource("/components/RepoTab.fxml"))
+            var content = fxmlLoader.load<VBox>()
+            var repoTab = fxmlLoader.getController<RepoTab>()
+
+            //assigning RepoTab data
+            repoTab.content = content
+            repoTab.path = path
+
+            return repoTab
+        }
     }
 
 }

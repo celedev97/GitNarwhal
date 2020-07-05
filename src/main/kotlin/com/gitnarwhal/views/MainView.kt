@@ -9,13 +9,16 @@ import javafx.scene.control.TabPane
 import java.net.URL
 import java.util.*
 import com.gitnarwhal.GitNarwhal
+import javafx.fxml.FXMLLoader
 import javafx.scene.Parent
+import javafx.scene.layout.VBox
 
 class MainView : Initializable {
     @FXML lateinit var tabPane : TabPane
 
 
     override fun initialize(location: URL?, resources: ResourceBundle?) {
-        tabPane.tabs.add(RepoTab("D:\\Desktop\\repos\\architecture-helper"))
+        tabPane.tabs.add(RepoTab.create("D:\\Desktop\\repos\\architecture-helper"))
     }
+
 }
