@@ -1,20 +1,37 @@
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
+
 //region GLOBALS
 buildscript {
     //dependencies versions/modules
     ext.kotlin_version = "1.3.72"
-    ext.javafx_version = "11.0.2"
-    ext.javafx_modules = [ 'javafx-controls', 'javafx.fxml' ]
+
+    //javaFX
+    ext.javafx_version = "12"
+    ext.javafx_modules = ['javafx-base', 'javafx-graphics', 'javafx-controls', 'javafx-fxml' ]
+    ext.javafx_platforms = ['win','linux','mac']
+
+    //JRE bundling
+    ext.jreVersion = "11"
+    ext.operatingSystems = ["windows/x64","linux/x64","mac/x64"] //adoptopenjdk API v3
 }
+
 //endregion
-
-
-
 //region PLUGINS / REPOSITORIES
 plugins {
+    //basic things
     id "application"
-    id 'org.openjfx.javafxplugin' version '0.0.9'
     id "org.jetbrains.kotlin.jvm" version "$kotlin_version"
-    id 'org.beryx.jlink' version '2.20.0'
+
+    //JAR plugin
+    id 'com.github.johnrengelman.shadow' version '6.0.0'
+
+    //JRE bundling plugins
+    id 'edu.sc.seis.launch4j' version '2.4.6'
+    id "nebula.ospackage" version "8.4.1"
+    id "edu.sc.seis.macAppBundle" version "2.3.0"
 }
 
 repositories {
@@ -26,46 +43,148 @@ repositories {
     }
 }
 //endregion
-def gitnarwhalVersion = "0.0.1"
+
 mainClassName = "com.gitnarwhal.MainKt"
+version = "0.0.1"
 
-compileKotlin {
-    kotlinOptions.jvmTarget = "11"
-}
+//region COMPILATION/DEPENDENCIES
+compileKotlin.kotlinOptions.jvmTarget = "11"
 
-application{
-    mainModule = "gitnarwhal.main"
+def javafx_dependencies_per_platform = javafx_platforms.collectEntries{ platform->
+    [(platform) : (javafx_modules.collect{ module ->
+        "org.openjfx:$module:$javafx_version:$platform"
+    })]
 }
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
     implementation 'org.kordamp.ikonli:ikonli-javafx:11.5.0'
     implementation 'org.kordamp.ikonli:ikonli-materialdesign-pack:11.5.0'
+
+
+    javafx_dependencies_per_platform.each { platform, deps ->
+        deps.each { dependency ->
+            implementation(dependency)
+        }
+    }
 }
+//endregion
 
-javafx {
-    version = '12'
-    modules = [ 'javafx.controls', 'javafx.fxml' ]
-}
+//region FAT/JAR
+shadowJar {
+    archiveBaseName = project.name
+    archiveClassifier = ''
+    archiveVersion  = project.version
 
-configurations.implementation.canBeResolved = true
-configurations.implementation.forEach{e -> println(e)}
-
-jar {
-    archiveBaseName = mainClassName
     manifest {
         attributes(
-                //"Class-Path": configurations.implementation.collect { it.getName() }.join(" "),
                 "Main-Class": mainClassName,
-                "Specification-Version" : gitnarwhalVersion
+                "Specification-Version" : project.version
         )
     }
 }
+//endregion
 
-task fatJar(type: Jar) {
-    manifest.attributes = jar.manifest.attributes
+task bundle {
+    dependsOn shadowJar
+    doLast {
+        operatingSystems.each{operatingSystem ->
+            def jrePath = downloadJRE(operatingSystem, jreVersion)
+            def os = operatingSystem.toLowerCase()
 
-    archiveBaseName = "GITNARWHAL"
-    from { configurations.implementation.sort().collect { it.isDirectory() ? it : zipTree(it) } }
-    with jar
+            if(os.contains("windows")){
+                //if JRE is present
+                launch4j.bundledJrePath = jrePath
+                createExe.run()
+            }else if(os.contains("linux")){
+
+            }
+        }
+    }
+}
+
+launch4j {
+    outfile = 'TestMain.exe'
+    mainClassName = project.mainClassName
+    copyConfigurable = tasks.jar.outputs.files
+    jar = "lib/"+tasks.jar.archiveFileName.get()
+    icon = "icon.ico"
+}
+
+createExe.doFirst {
+    launch4j.bundledJrePath = downloadJRE("windows/x64", jreVersion)
+}
+
+static String downloadFileWithRedirects(String location, String path ) {
+    HttpURLConnection connection = null;
+    String redirectLocation = "";
+    String lastValidFileName = "temp.zip"
+    for (;;) {
+        println("URL: "+ location)
+        location.eachMatch("([.a-zA-Z0-9-_]*\\.[.a-zA-Z]{3,})\$"){match->
+            lastValidFileName = match[0]
+        }
+        URL url = new URL(location);
+        connection = (HttpURLConnection) url.openConnection();
+        connection.setInstanceFollowRedirects(false);
+        redirectLocation = connection.getHeaderField("Location");
+        if (redirectLocation == null) break;
+        location = redirectLocation;
+    }
+
+    println("FOUND: "+lastValidFileName)
+
+    String fileName = path + '/' + lastValidFileName
+    new File(fileName).withOutputStream { out ->
+        new URL(location).openConnection().inputStream.with { inp ->
+            out << inp
+            inp.close()
+        }
+    }
+    return fileName
+}
+
+def String downloadJRE(String operatingSystem, String jreVersion) {
+    def jrePath = buildDir.absolutePath + "/jre/" + jreVersion + "/" + operatingSystem
+
+    if (new File(jrePath).isDirectory()){
+        println("JRE "+jreVersion+" FOR "+operatingSystem+" already present, not downloading it again.")
+        return
+    }
+
+    println("JRE "+jreVersion+" FOR "+operatingSystem+" MISSING, downloading it...")
+
+    def tempDir = new File(buildDir.absolutePath + "/jre/temp");
+    if(tempDir.exists()) tempDir.deleteDir()
+    Files.createDirectories(tempDir.toPath())
+
+    def downloaded = downloadFileWithRedirects("https://api.adoptopenjdk.net/v3/binary/latest/"+jreVersion+"/ga/"+operatingSystem+"/jre/hotspot/normal/adoptopenjdk", tempDir.path)
+
+    //EXTRACT IT
+    if(downloaded.endsWith(".zip")){
+        copy {
+            from zipTree(downloaded)
+            into tempDir
+        }
+    }else if(downloaded.endsWith(".tar.gz")){
+        copy {
+            from tarTree(resources.gzip(downloaded))
+            into tempDir
+        }
+    }
+
+    //IF EXTRACTION DIDN'T WORK
+    new File(downloaded).delete()
+    def files = tempDir.listFiles()
+    if(files.size() != 1){
+        throw new Exception("JRE DOWNLOAD ERROR!");
+    }
+
+    //MOVE IT TO THE RIGHT LOCATION
+    def copyTarget = new File(jrePath)
+    Files.createDirectories(copyTarget.parentFile.toPath())
+    Files.move(files[0].toPath(), copyTarget.toPath(), StandardCopyOption.REPLACE_EXISTING)
+
+    println("JRE "+jreVersion+" FOR "+operatingSystem+" downloaded!");
+    return jrePath
 }
