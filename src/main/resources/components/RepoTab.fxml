@@ -17,7 +17,7 @@
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 <?import org.kordamp.ikonli.javafx.StackedFontIcon?>
 
-<VBox prefHeight="578.0" prefWidth="1325.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1">
+<VBox prefHeight="578.0" prefWidth="1325.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.gitnarwhal.components.RepoTab">
    <children>
       <BorderPane prefHeight="65.0" prefWidth="718.0" style="-fx-background-color: lightgrey;">
          <left>
@@ -50,7 +50,7 @@
                         <FontIcon iconLiteral="mdi-arrow-up-bold-circle-outline" iconSize="38" />
                      </graphic>
                   </Button>
-                  <Button contentDisplay="BOTTOM" text="Fetch">
+                  <Button contentDisplay="BOTTOM" text="Fetch" onAction="#fetch">
                      <graphic>
                         <StackedFontIcon>
                            <children>
