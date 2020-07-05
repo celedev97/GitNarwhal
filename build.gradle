@@ -1,7 +1,5 @@
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
 
 //region GLOBALS
 buildscript {
@@ -21,6 +19,7 @@ buildscript {
 }
 
 //endregion
+
 //region PLUGINS / REPOSITORIES
 plugins {
     //basic things
@@ -34,6 +33,7 @@ plugins {
     id 'edu.sc.seis.launch4j' version '2.4.6'
     id "nebula.ospackage" version "8.4.1"
     id "edu.sc.seis.macAppBundle" version "2.3.0"
+
 }
 
 repositories {
@@ -76,7 +76,6 @@ dependencies {
 jar.enabled(false)
 shadowJar {
     archiveBaseName = project.name
-    archiveClassifier = ''
     archiveVersion  = project.version
 
     manifest {
@@ -88,43 +87,65 @@ shadowJar {
 }
 //endregion
 
-task release {
+task win64{
     dependsOn shadowJar
-    dependsOn createExe
-}
-
-createExe{
-    dependsOn shadowJar
-    mainClassName = project.mainClassName
-    outfile = project.name + ".exe"
-    jar = "lib/"+tasks.jar.archiveFileName.get()
-    icon = projectDir.absolutePath + "/icon.ico"
-
-
-    doFirst{
-        launch4j.bundledJrePath = downloadJRE("windows/x64", jreVersion)
-    }
-}
-
-task exe{
     doLast {
-        Files.createDirectories(new File(buildDir.absolutePath+"/exe").toPath())
-        Files.createDirectories(new File(buildDir.absolutePath+"/jars").toPath())
-        copy {
-            from downloadJRE("windows/x64", jreVersion)
-            into buildDir.absolutePath+"/exe/jre"
-        }
-        copy{
-            from libsDirectory
-            into buildDir.absolutePath+"/exe/jars"
-        }
-        PrintWriter out = new PrintWriter(buildDir.absolutePath+"/exe/"+project.name+".bat")
+        def bundleFolder = bundleJRE("windows/x64", buildDir.absolutePath)
+        PrintWriter out = new PrintWriter(bundleFolder+"/"+project.name+".bat")
         out.println('START %~dp0/jre/bin/javaw.exe -jar %~dp0/jars/'+jar.archiveFileName.get());
         out.close()
     }
 }
+task linux64{
+    dependsOn shadowJar
+    doLast {
+        def bundleFolder = bundleJRE("linux/x64", buildDir.absolutePath)
+        PrintWriter out = new PrintWriter(bundleFolder+"/"+project.name+".sh")
+        out.println('#!/bin/sh')
+        out.println('BASEDIR=$(dirname "$0")')
+        out.println('$BASEDIR/jre/bin/java -jar $BASEDIR/jars/'+jar.archiveFileName.get());
+        out.close()
+    }
+}
+task mac64{
+    dependsOn shadowJar
+    doLast {
+        def bundleFolder = bundleJRE("mac/x64", buildDir.absolutePath)
+        PrintWriter out = new PrintWriter(bundleFolder+"/"+project.name+".command")
+        out.println('#!/bin/bash')
+        out.println('BASEDIR=$(dirname "$0")')
+        out.println('$BASEDIR/jre/bin/java -jar $BASEDIR/jars/'+jar.archiveFileName.get());
+        out.close()
+    }
+}
+
+
+task release {
+    dependsOn win64
+    dependsOn linux64
+    dependsOn mac64
+}
+
+
 
 //region HELPERS FUNCTIONS
+String bundleJRE(String os, String buildDir){
+    def osCode = os;
+    os = os.replace("/","_");
+    String bundleDir = buildDir+"/app/"+os
+
+    Files.createDirectories(new File(bundleDir+"/jars").toPath())
+    copy {
+        from downloadJRE(osCode, jreVersion)
+        into bundleDir+"/jre"
+    }
+    copy{
+        from libsDirectory
+        into bundleDir+"/jars"
+    }
+    return bundleDir
+}
+
 static String downloadFileWithRedirects(String location, String path ) {
     HttpURLConnection connection = null;
     String redirectLocation = "";
@@ -155,7 +176,7 @@ static String downloadFileWithRedirects(String location, String path ) {
 }
 
 def String downloadJRE(String operatingSystem, String jreVersion) {
-    def jrePath = buildDir.absolutePath + "/jre/" + jreVersion + "/" + operatingSystem
+    def jrePath = projectDir.absolutePath + "/.gradle/jre/" + jreVersion + "/" + operatingSystem
 
     if (new File(jrePath).isDirectory()){
         //println("JRE "+jreVersion+" FOR "+operatingSystem+" already present, not downloading it again.")
@@ -164,7 +185,8 @@ def String downloadJRE(String operatingSystem, String jreVersion) {
 
     println("JRE "+jreVersion+" FOR "+operatingSystem+" MISSING, downloading it...")
 
-    def tempDir = new File(buildDir.absolutePath + "/jre/temp");
+    def tempDirPath = projectDir.absolutePath + "/.gradle/jre/temp";
+    def tempDir = new File(tempDirPath)
     if(tempDir.exists()) tempDir.deleteDir()
     Files.createDirectories(tempDir.toPath())
 
@@ -174,12 +196,12 @@ def String downloadJRE(String operatingSystem, String jreVersion) {
     if(downloaded.endsWith(".zip")){
         copy {
             from zipTree(downloaded)
-            into tempDir
+            into tempDirPath
         }
     }else if(downloaded.endsWith(".tar.gz")){
         copy {
             from tarTree(resources.gzip(downloaded))
-            into tempDir
+            into tempDirPath
         }
     }
 
