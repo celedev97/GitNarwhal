@@ -1,3 +1,4 @@
+import java.nio.file.CopyOption
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
@@ -14,8 +15,6 @@ buildscript {
     ext.javafx_version = "14"
     ext.javafx_modules = ['javafx-base', 'javafx-graphics', 'javafx-controls', 'javafx-fxml' ]
     ext.javafx_platforms = ['win','linux','mac']
-
-
 }
 
 //endregion
@@ -46,6 +45,13 @@ repositories {
 }
 //endregion
 
+apply plugin: JREPackager
+
+jrePackager{
+    jreVersion = project.ext.get("jreVersion")
+    replaceInnoSetupVersion = project.version
+}
+
 mainClassName = "com.gitnarwhal.MainKt"
 version = "0.0.1"
 
@@ -74,9 +80,16 @@ dependencies {
 
 //region FAT/JAR
 jar.enabled(false)
+
+jar{
+    archiveBaseName = project.name
+    archiveVersion  = ''
+    archiveClassifier = ''
+}
 shadowJar {
     archiveBaseName = project.name
-    archiveVersion  = project.version
+    archiveVersion  = ''
+    archiveClassifier = ''
 
     manifest {
         attributes(
@@ -87,137 +100,261 @@ shadowJar {
 }
 //endregion
 
-task win64{
-    dependsOn shadowJar
-    doLast {
-        def bundleFolder = bundleJRE("windows/x64", buildDir.absolutePath)
-        PrintWriter out = new PrintWriter(bundleFolder+"/"+project.name+".bat")
-        out.println('START %~dp0/jre/bin/javaw.exe -jar %~dp0/jars/'+jar.archiveFileName.get());
-        out.close()
-    }
-}
-task linux64{
-    dependsOn shadowJar
-    doLast {
-        def bundleFolder = bundleJRE("linux/x64", buildDir.absolutePath)
-        PrintWriter out = new PrintWriter(bundleFolder+"/"+project.name+".sh")
-        out.println('#!/bin/sh')
-        out.println('BASEDIR=$(dirname "$0")')
-        out.println('$BASEDIR/jre/bin/java -jar $BASEDIR/jars/'+jar.archiveFileName.get());
-        out.close()
-    }
-}
-task mac64{
-    dependsOn shadowJar
-    doLast {
-        def bundleFolder = bundleJRE("mac/x64", buildDir.absolutePath)
-        PrintWriter out = new PrintWriter(bundleFolder+"/"+project.name+".command")
-        out.println('#!/bin/bash')
-        out.println('BASEDIR=$(dirname "$0")')
-        out.println('$BASEDIR/jre/bin/java -jar $BASEDIR/jars/'+jar.archiveFileName.get());
-        out.close()
-    }
+task bundle {
+    dependsOn win64app
+    dependsOn linux64app
+    dependsOn mac64app
 }
 
-
-task release {
-    dependsOn win64
-    dependsOn linux64
-    dependsOn mac64
+task release{
+    dependsOn win64installer
+    dependsOn linux64installer
+    dependsOn mac64installer
 }
 
-
-
-//region HELPERS FUNCTIONS
-String bundleJRE(String os, String buildDir){
-    def osCode = os;
-    os = os.replace("/","_");
-    String bundleDir = buildDir+"/app/"+os
-
-    Files.createDirectories(new File(bundleDir+"/jars").toPath())
-    copy {
-        from downloadJRE(osCode, jreVersion)
-        into bundleDir+"/jre"
-    }
-    copy{
-        from libsDirectory
-        into bundleDir+"/jars"
-    }
-    return bundleDir
+//TODO: CHANGE TASKS TO INCREMENTAL TASKS
+//TODO: TOO MUCH HARDCODED STUFF, DEFINE VARIABLES FOR RELEASES
+class JREPackagerExtension{
+    String jreVersion = '13'
+    String innoSetupFile = "/gradle/innosetup/inno.iss"
+    String replaceInnoSetupVersion = null
 }
+class JREPackager implements Plugin<Project> {
 
-static String downloadFileWithRedirects(String location, String path ) {
-    HttpURLConnection connection = null;
-    String redirectLocation = "";
-    String lastValidFileName = "temp.zip"
-    for (;;) {
-        println("URL: "+ location)
-        location.eachMatch("([.a-zA-Z0-9-_]*\\.[.a-zA-Z]{3,})\$"){match->
-            lastValidFileName = match[0]
+    Project project;
+    JREPackagerExtension conf
+
+    void apply(Project project) {
+        conf = project.extensions.create('jrePackager', JREPackagerExtension)
+
+        //region get jar/shadowjar for dependencies
+        this.project = project;
+        Task jar = null
+        try {
+            jar = project.tasks.getByName("shadowJar")
+        } catch (Exception ignored) {
+            jar = project.tasks.getByName("jar")
         }
-        URL url = new URL(location);
-        connection = (HttpURLConnection) url.openConnection();
-        connection.setInstanceFollowRedirects(false);
-        redirectLocation = connection.getHeaderField("Location");
-        if (redirectLocation == null) break;
-        location = redirectLocation;
-    }
+        //endregion
 
-    println("FOUND: "+lastValidFileName)
-
-    String fileName = path + '/' + lastValidFileName
-    new File(fileName).withOutputStream { out ->
-        new URL(location).openConnection().inputStream.with { inp ->
-            out << inp
-            inp.close()
+        //region JRE Bundle
+        def win64app = project.task("win64app") {
+            dependsOn jar
+            doLast {
+                def bundleFolder = bundleJRE("windows/x64", conf.jreVersion, project.buildDir.absolutePath)
+                PrintWriter out = new PrintWriter(bundleFolder + "/" + project.name + ".bat")
+                out.println('START %~dp0/jre/bin/javaw.exe -jar %~dp0/jars/' + project.tasks.getByName("jar").archiveFileName.get());
+                out.close()
+            }
         }
+        def linux64app = project.task("linux64app") {
+            dependsOn jar
+            doLast {
+                def bundleFolder = bundleJRE("linux/x64", conf.jreVersion, project.buildDir.absolutePath)
+                PrintWriter out = new PrintWriter(bundleFolder + "/" + project.name + ".sh")
+                out.println('#!/bin/sh')
+                out.println('BASEDIR=$(dirname "$0")')
+                out.println('$BASEDIR/jre/bin/java -jar $BASEDIR/jars/' + project.tasks.getByName("jar").archiveFileName.get());
+                out.close()
+            }
+        }
+        def mac64app = project.task("mac64app") {
+            dependsOn jar
+            doLast {
+                def bundleFolder = bundleJRE("mac/x64", conf.jreVersion, project.buildDir.absolutePath)
+                PrintWriter out = new PrintWriter(bundleFolder + "/" + project.name + ".command")
+                out.println('#!/bin/bash')
+                out.println('BASEDIR=$(dirname "$0")')
+                out.println('$BASEDIR/jre/bin/java -jar $BASEDIR/jars/' + project.tasks.getByName("jar").archiveFileName.get());
+                out.close()
+            }
+        }
+        //endregion
+
+        //region Installer/Packaging
+        def win64installer = project.task("win64installer") {
+            dependsOn win64app
+            doLast {
+                //creating a build dir for the inno setup
+                def innoDirPath = project.buildDir.absolutePath + "/innosetup"
+                Files.createDirectories(new File(project.buildDir.absolutePath + "/innosetup").toPath())
+
+                //copy the bundled output
+                project.copy{
+                    from project.buildDir.absolutePath + "/app/windows_x64"
+                    into innoDirPath
+                }
+
+                //copy inno setup
+                def innoFilePath = innoDirPath + "/inno.iss"
+                Files.copy(
+                        new File((project.projectDir.absolutePath + "/" + conf.innoSetupFile).replace("//","/")).toPath(),
+                        new File(innoFilePath).toPath(),
+                        StandardCopyOption.REPLACE_EXISTING
+                )
+
+                //replace version
+                if(conf.replaceInnoSetupVersion != null){
+                    List<String> lines = Files.readAllLines(new File(innoFilePath).toPath())
+                    PrintWriter writer = new PrintWriter(innoFilePath)
+
+                    lines.each { line ->
+                        if(line.startsWith("#define") && line.contains("MyAppVersion")){
+                            writer.println("#define MyAppVersion \""+conf.replaceInnoSetupVersion+"\"")
+                        }else{
+                            writer.println(line);
+                        }
+                    }
+
+                    writer.close();
+                }
+
+                //run inno compiler
+                project.exec {
+                    workingDir innoDirPath
+                    commandLine project.projectDir.absolutePath+"/gradle/innosetup/iscc", innoFilePath
+                }
+            }
+        }
+
+        def linux64installer = project.task("linux64installer") {
+            dependsOn linux64app
+            doLast {
+                def wsl = ""
+                if (!System.properties['os.name'].toLowerCase().contains('linux')) {
+                    wsl = "cmd /c wsl "
+                    throw new Exception("DEBIAN PACKAGE FROM WINDOWS STILL DOESN'T WORK!")
+                }
+
+                Files.createDirectories(new File(project.buildDir.absolutePath + "/installer/linux_x64/deb/DEBIAN").toPath())
+
+                PrintWriter out = new PrintWriter(project.buildDir.absolutePath + "/installer/linux_x64/deb/DEBIAN/control")
+                out.print("""
+Package: gitnarwhal
+Version: $version
+Architecture: all
+Maintainer: github.com/fc-dev/GitNarwhal
+Description: Cross-platform Git GUI client
+""");
+                out.close()
+
+                project.copy {
+                    from project.buildDir.absolutePath + "/app/linux_x64/deb"
+                    into project.buildDir.absolutePath + "/installer/linux_x64/deb/usr/bin/"
+                }
+
+
+                ByteArrayOutputStream byteOut = new ByteArrayOutputStream()
+                project.exec {
+                    commandLine = wsl + "dpkg-deb --build " + project.buildDir.absolutePath + "/installer/linux_x64/deb"
+                    standardOutput = byteOut
+                }
+                println(new String(byteOut.toByteArray()))
+
+            }
+        }
+
+        def mac64installer = project.task("mac64installer") {
+            dependsOn mac64app
+            doLast {
+
+            }
+        }
+        //endregion
+
     }
-    return fileName
-}
 
-def String downloadJRE(String operatingSystem, String jreVersion) {
-    def jrePath = projectDir.absolutePath + "/.gradle/jre/" + jreVersion + "/" + operatingSystem
+    //region HELPERS FUNCTIONS
+    String bundleJRE(String os, String jreVersion, String buildDir) {
+        def osCode = os;
+        os = os.replace("/", "_");
+        String bundleDir = buildDir + "/app/" + os
 
-    if (new File(jrePath).isDirectory()){
-        //println("JRE "+jreVersion+" FOR "+operatingSystem+" already present, not downloading it again.")
+        Files.createDirectories(new File(bundleDir + "/jars").toPath())
+        project.copy {
+            from downloadJRE(osCode, jreVersion)
+            into bundleDir + "/jre"
+        }
+        project.copy {
+            from project.libsDirectory
+            into bundleDir + "/jars"
+        }
+        return bundleDir
+    }
+
+    String downloadFileWithRedirects(String location, String path) {
+        HttpURLConnection connection = null;
+        String redirectLocation = "";
+        String lastValidFileName = "temp.zip"
+        for (; ;) {
+            println("URL: " + location)
+            location.eachMatch("([.a-zA-Z0-9-_]*\\.[.a-zA-Z]{3,})\$") { match ->
+                lastValidFileName = match[0]
+            }
+            URL url = new URL(location);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setInstanceFollowRedirects(false);
+            redirectLocation = connection.getHeaderField("Location");
+            if (redirectLocation == null) break;
+            location = redirectLocation;
+        }
+
+        println("FOUND: " + lastValidFileName)
+
+        String fileName = path + '/' + lastValidFileName
+        new File(fileName).withOutputStream { out ->
+            new URL(location).openConnection().inputStream.with { inp ->
+                out << inp
+                inp.close()
+            }
+        }
+        return fileName
+    }
+
+    String downloadJRE(String operatingSystem, String jreVersion) {
+        def jrePath = project.projectDir.absolutePath + "/.gradle/jre/" + jreVersion + "/" + operatingSystem
+
+        if (new File(jrePath).isDirectory()) {
+            //println("JRE "+jreVersion+" FOR "+operatingSystem+" already present, not downloading it again.")
+            return jrePath
+        }
+
+        println("JRE " + jreVersion + " FOR " + operatingSystem + " MISSING, downloading it...")
+
+        def tempDirPath = project.projectDir.absolutePath + "/.gradle/jre/temp";
+        def tempDir = new File(tempDirPath)
+        if (tempDir.exists()) tempDir.deleteDir()
+        Files.createDirectories(tempDir.toPath())
+
+        def downloaded = downloadFileWithRedirects("https://api.adoptopenjdk.net/v3/binary/latest/" + jreVersion + "/ga/" + operatingSystem + "/jre/hotspot/normal/adoptopenjdk", tempDir.path)
+
+        //EXTRACT IT
+        if (downloaded.endsWith(".zip")) {
+            project.copy {
+                from project.zipTree(downloaded)
+                into tempDirPath
+            }
+        } else if (downloaded.endsWith(".tar.gz")) {
+            project.copy {
+                from project.tarTree(resources.gzip(downloaded))
+                into tempDirPath
+            }
+        }
+
+        //IF EXTRACTION DIDN'T WORK
+        new File(downloaded).delete()
+        def files = tempDir.listFiles()
+        if (files.size() != 1) {
+            throw new Exception("JRE DOWNLOAD ERROR!");
+        }
+
+        //MOVE IT TO THE RIGHT LOCATION
+        def copyTarget = new File(jrePath)
+        Files.createDirectories(copyTarget.parentFile.toPath())
+        Files.move(files[0].toPath(), copyTarget.toPath(), StandardCopyOption.REPLACE_EXISTING)
+
+        println("JRE " + jreVersion + " FOR " + operatingSystem + " downloaded!");
         return jrePath
     }
-
-    println("JRE "+jreVersion+" FOR "+operatingSystem+" MISSING, downloading it...")
-
-    def tempDirPath = projectDir.absolutePath + "/.gradle/jre/temp";
-    def tempDir = new File(tempDirPath)
-    if(tempDir.exists()) tempDir.deleteDir()
-    Files.createDirectories(tempDir.toPath())
-
-    def downloaded = downloadFileWithRedirects("https://api.adoptopenjdk.net/v3/binary/latest/"+jreVersion+"/ga/"+operatingSystem+"/jre/hotspot/normal/adoptopenjdk", tempDir.path)
-
-    //EXTRACT IT
-    if(downloaded.endsWith(".zip")){
-        copy {
-            from zipTree(downloaded)
-            into tempDirPath
-        }
-    }else if(downloaded.endsWith(".tar.gz")){
-        copy {
-            from tarTree(resources.gzip(downloaded))
-            into tempDirPath
-        }
-    }
-
-    //IF EXTRACTION DIDN'T WORK
-    new File(downloaded).delete()
-    def files = tempDir.listFiles()
-    if(files.size() != 1){
-        throw new Exception("JRE DOWNLOAD ERROR!");
-    }
-
-    //MOVE IT TO THE RIGHT LOCATION
-    def copyTarget = new File(jrePath)
-    Files.createDirectories(copyTarget.parentFile.toPath())
-    Files.move(files[0].toPath(), copyTarget.toPath(), StandardCopyOption.REPLACE_EXISTING)
-
-    println("JRE "+jreVersion+" FOR "+operatingSystem+" downloaded!");
-    return jrePath
-}
 //endregion
+}
