@@ -1,0 +1,50 @@
+name: Release
+
+#activated by pushes on release branch
+on:
+  push:
+    branches: [ release ]
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "release"
+  release_windows:
+    runs-on: ubuntu-18.04
+    steps:
+    
+    - name: Checkout the repo
+      uses: actions/checkout@v2
+      
+    - name: Install JDK
+      uses: actions/setup-java@v1.3.0
+      with:
+        java-version: 13
+        java-package: jdk
+      
+    - name: Install innoextract
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y software-properties-common
+        sudo add-apt-repository ppa:arx/release -y
+        sudo apt-get update
+        sudo apt-get install -y innoextract
+      
+    - name: Install wget
+      run: sudo apt-get install -y wget
+      
+    - name: Install wine
+      run: |
+        sudo apt-get install -y wine-stable
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install wine32 -y
+        
+    - name: Install innosetup in C:\inno
+      run: |
+        wget -O is.exe https://files.jrsoftware.org/is/6/innosetup-6.0.2.exe
+        innoextract is.exe
+        mkdir -p ~/".wine/drive_c/inno"
+        cp -a app/* ~/".wine/drive_c/inno"
+      
+    - name: Build setup.exe
+      run: ./gradlew win64installer
