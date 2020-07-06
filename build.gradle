@@ -336,7 +336,7 @@ Description: Cross-platform Git GUI client
             }
         } else if (downloaded.endsWith(".tar.gz")) {
             project.copy {
-                from project.tarTree(resources.gzip(downloaded))
+                from project.tarTree(project.resources.gzip(downloaded))
                 into tempDirPath
             }
         }
