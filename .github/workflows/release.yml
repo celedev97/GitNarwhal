@@ -48,3 +48,9 @@ jobs:
       
     - name: Build setup.exe
       run: ./gradlew win64installer
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: gitnarwhal_win64_installer.exe
+        path: ./build/innosetup/Output/mysetup.exe
