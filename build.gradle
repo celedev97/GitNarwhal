@@ -91,6 +91,8 @@ shadowJar {
     archiveVersion  = ''
     archiveClassifier = ''
 
+    println("ARCHIVE!!! "+archiveBaseName.get())
+
     manifest {
         attributes(
                 "Main-Class": mainClassName,
