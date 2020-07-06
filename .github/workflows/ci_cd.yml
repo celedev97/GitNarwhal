@@ -1,0 +1,128 @@
+on: push
+
+jobs:
+  #Unit test
+  test:
+    timeout-minutes: 5
+    runs-on: ubuntu-18.04
+    steps:    
+    - name: Install JDK
+      uses: actions/setup-java@v1.3.0
+      with:
+        java-version: 13
+        java-package: jdk
+    - name: Checkout the repo
+      uses: actions/checkout@v2
+            
+    - name: Run tests
+      run: |
+        ./gradlew test
+  
+  #Jar creation
+  jar:
+    if: github.ref == 'refs/heads/release'
+    runs-on: ubuntu-18.04
+    steps:    
+    - name: Install JDK
+      uses: actions/setup-java@v1.3.0
+      with:
+        java-version: 13
+        java-package: jdk
+    - name: Checkout the repo
+      uses: actions/checkout@v2
+            
+    - name: Create Jar
+      run: |
+        ./gradlew shadowJar
+        
+    - name: Upload JAR
+      uses: actions/upload-artifact@v1
+      with:
+        name: shadowJar
+        path: ./build/libs/gitnarwhal.jar
+
+  #Windows/Linux/MacOS images
+  bundle_jre_images:
+    needs: [jar]
+    if: github.ref == 'refs/heads/release'
+    runs-on: ubuntu-18.04
+    steps:    
+    - name: Install JDK
+      uses: actions/setup-java@v1.3.0
+      with:
+        java-version: 13
+        java-package: jdk
+    - name: Checkout the repo
+      uses: actions/checkout@v2
+            
+    - name: Bundle JAR with JRE and launcher script
+      run: |
+        ./gradlew bundle
+        
+    - name: Upload Windows image
+      uses: actions/upload-artifact@v1
+      with:
+        name: windows_x64_image
+        path: ./build/app/windows_x64
+        
+    - name: Upload Linux image
+      uses: actions/upload-artifact@v1
+      with:
+        name: linux_x64_image
+        path: ./build/app/linux_x64
+
+    - name: Upload MacOS image
+      uses: actions/upload-artifact@v1
+      with:
+        name: mac_x64_image
+        path: ./build/app/mac_x64
+  
+  release_windows:
+    if: github.ref == 'refs/heads/release'
+    runs-on: ubuntu-18.04
+    needs: [bundle_jre_images]
+    steps:
+    - name: Install JDK
+      uses: actions/setup-java@v1.3.0
+      with:
+        java-version: 13
+        java-package: jdk
+    - name: Checkout the repo
+      uses: actions/checkout@v2
+
+      
+    - name: Install innoextract
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y software-properties-common
+        sudo add-apt-repository ppa:arx/release -y
+        sudo apt-get update
+        sudo apt-get install -y innoextract
+      
+    - name: Install wget
+      run: sudo apt-get install -y wget
+      
+    - name: Install wine
+      run: |
+        sudo apt-get install -y wine-stable
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install wine32 -y
+        
+    - name: Install innosetup in C:\inno
+      run: |
+        wget -O is.exe https://files.jrsoftware.org/is/6/innosetup-6.0.2.exe
+        innoextract is.exe
+        mkdir -p ~/".wine/drive_c/inno"
+        cp -a app/* ~/".wine/drive_c/inno"
+      
+    - name: Build setup.exe
+      run: |
+        ./gradlew win64installer
+        mv ./build/innosetup/Output/mysetup.exe ./build/innosetup/Output/gitnarwhal.exe
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: windows_x64_installer
+        path: ./build/innosetup/Output/gitnarwhal.exe
