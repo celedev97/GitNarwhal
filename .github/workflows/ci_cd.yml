@@ -58,7 +58,7 @@ jobs:
             
     - name: Bundle JAR with JRE and launcher script
       run: |
-        ./gradlew bundle
+        ./gradlew bundle --stacktrace
         
     - name: Upload Windows image
       uses: actions/upload-artifact@v1
