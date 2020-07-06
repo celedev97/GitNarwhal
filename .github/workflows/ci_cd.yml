@@ -35,8 +35,6 @@ jobs:
     - name: Create Jar
       run: |
         ./gradlew shadowJar
-        sudo apt-get install tree -y
-        tree
         
     - name: Upload JAR
       uses: actions/upload-artifact@v1
