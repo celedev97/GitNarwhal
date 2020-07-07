@@ -117,6 +117,7 @@ task release{
 class JREPackagerExtension{
     String jreVersion = '13'
     String innoSetupFile = "/gradle/innosetup/inno.iss"
+    String iconFile = "/gradle/innosetup/icon.ico"
     String replaceInnoSetupVersion = null
 }
 class JREPackager implements Plugin<Project> {
@@ -192,6 +193,15 @@ class JREPackager implements Plugin<Project> {
                         new File(innoFilePath).toPath(),
                         StandardCopyOption.REPLACE_EXISTING
                 )
+
+                if(conf.iconFile != null){
+                    Files.copy(
+                            new File((project.projectDir.absolutePath + "/" + conf.iconFile).replace("//","/")).toPath(),
+                            new File(innoDirPath + "/" + conf.iconFile.split("/").last()).toPath(),
+                            StandardCopyOption.REPLACE_EXISTING
+                    )
+                    println("COPIED ICON TO:" + innoDirPath + conf.iconFile.split("/").last())
+                }
 
                 //replace version
                 if(conf.replaceInnoSetupVersion != null){
