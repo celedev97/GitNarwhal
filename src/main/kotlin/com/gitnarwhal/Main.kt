@@ -5,6 +5,7 @@ import javafx.application.Application
 import javafx.fxml.FXMLLoader
 import javafx.scene.Parent
 import javafx.scene.Scene
+import javafx.scene.image.Image
 import javafx.stage.Stage
 import java.util.*
 import java.util.jar.Manifest
@@ -21,6 +22,7 @@ class GitNarwhal() : Application() {
 
     override fun start(primaryStage: Stage) {
         primaryStage.scene = Scene(fxmlView<Parent>("MainView"))
+        primaryStage.icons.add(Image(GitNarwhal::class.java.getResourceAsStream("/icon.png")));
         primaryStage.show();
     }
 
