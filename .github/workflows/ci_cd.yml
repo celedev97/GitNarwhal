@@ -123,14 +123,7 @@ jobs:
 
     - name: Build setup.exe
       run: |
-        pwd
-        whoami
-        groups $(whoami) 
-        chown root:root /github/home
-        winecfg
-        winepath ./build/innosetup/inno.iss
-        which winepath
-        which wine
+        cp -R /root/.wine ~/.wine
         ./gradlew win64installer
         mv ./build/innosetup/Output/mysetup.exe ./build/innosetup/Output/gitnarwhal.exe
 
