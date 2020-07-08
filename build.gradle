@@ -47,13 +47,14 @@ repositories {
 
 apply plugin: JREPackager
 
+mainClassName = "com.gitnarwhal.MainKt"
+version = "0.0.1"
+
 jrePackager{
     jreVersion = project.ext.get("jreVersion")
     replaceInnoSetupVersion = project.version
 }
 
-mainClassName = "com.gitnarwhal.MainKt"
-version = "0.0.1"
 
 //region COMPILATION/DEPENDENCIES
 compileKotlin.kotlinOptions.jvmTarget = jreVersion
