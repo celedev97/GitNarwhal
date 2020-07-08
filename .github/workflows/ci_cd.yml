@@ -126,8 +126,8 @@ jobs:
         pwd
         whoami
         groups $(whoami) 
-        winecfg
         chown root:root /github/home
+        winecfg
         winepath ./build/innosetup/inno.iss
         which winepath
         which wine
