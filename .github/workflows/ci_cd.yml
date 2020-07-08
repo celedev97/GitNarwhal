@@ -124,6 +124,9 @@ jobs:
     - name: Build setup.exe
       run: |
         pwd
+        winepath ./build/innosetup/inno.iss
+        which winepath
+        which wine
         ./gradlew win64installer
         mv ./build/innosetup/Output/mysetup.exe ./build/innosetup/Output/gitnarwhal.exe
 
