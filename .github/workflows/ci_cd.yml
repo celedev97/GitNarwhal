@@ -16,7 +16,9 @@ jobs:
     - name: Cache dependancies
       uses: actions/cache@v2
       with:
-        path: ~/.gradle/caches
+        path: |
+          ./gradle
+          ~/.gradle/caches
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
         restore-keys: |
           ${{ runner.os }}-gradle-
@@ -41,7 +43,9 @@ jobs:
     - name: Cache dependancies
       uses: actions/cache@v2
       with:
-        path: ~/.gradle/caches
+        path: |
+          ./gradle
+          ~/.gradle/caches
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
         restore-keys: |
           ${{ runner.os }}-gradle-
@@ -72,7 +76,9 @@ jobs:
     - name: Cache dependancies
       uses: actions/cache@v2
       with:
-        path: ~/.gradle/caches
+        path: |
+          ./gradle
+          ~/.gradle/caches
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
         restore-keys: |
           ${{ runner.os }}-gradle-
@@ -114,7 +120,9 @@ jobs:
     - name: Cache dependancies
       uses: actions/cache@v2
       with:
-        path: ~/.gradle/caches
+        path: |
+          ./gradle
+          ~/.gradle/caches
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
         restore-keys: |
           ${{ runner.os }}-gradle-
