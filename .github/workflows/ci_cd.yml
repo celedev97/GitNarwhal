@@ -30,7 +30,6 @@ jobs:
   #Jar creation
   jar:
     if: github.ref == 'refs/heads/release'
-    needs: [test]
     runs-on: ubuntu-18.04
     steps:
     - name: Install JDK
@@ -62,7 +61,6 @@ jobs:
 
   #Windows/Linux/MacOS images
   bundle_jre_images:
-    needs: [jar]
     if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-18.04
     steps:
@@ -109,7 +107,6 @@ jobs:
     if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-18.04
     container: fcdev/gitnarwhal:win
-    needs: [bundle_jre_images]
     
     steps:
     - name: Checkout the repo
@@ -126,6 +123,7 @@ jobs:
 
     - name: Build setup.exe
       run: |
+        pwd
         ./gradlew win64installer
         mv ./build/innosetup/Output/mysetup.exe ./build/innosetup/Output/gitnarwhal.exe
 
