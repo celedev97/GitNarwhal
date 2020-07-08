@@ -5,7 +5,7 @@ jobs:
   test:
     timeout-minutes: 5
     runs-on: ubuntu-18.04
-    steps:    
+    steps:
     - name: Install JDK
       uses: actions/setup-java@v1.3.0
       with:
@@ -30,7 +30,7 @@ jobs:
     if: github.ref == 'refs/heads/release'
     needs: [test]
     runs-on: ubuntu-18.04
-    steps:    
+    steps:
     - name: Install JDK
       uses: actions/setup-java@v1.3.0
       with:
@@ -61,7 +61,7 @@ jobs:
     needs: [jar]
     if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-18.04
-    steps:    
+    steps:
     - name: Install JDK
       uses: actions/setup-java@v1.3.0
       with:
@@ -103,7 +103,7 @@ jobs:
     if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-18.04
     needs: [bundle_jre_images]
-    steps:    
+    steps:
     - name: Install JDK
       uses: actions/setup-java@v1.3.0
       with:
