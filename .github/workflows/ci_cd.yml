@@ -13,6 +13,13 @@ jobs:
         java-package: jdk
     - name: Checkout the repo
       uses: actions/checkout@v2
+    - name: Cache dependancies
+    - uses: actions/cache@v2
+      with:
+        path: ~/.gradle/caches
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
             
     - name: Run tests
       run: |
@@ -31,6 +38,13 @@ jobs:
         java-package: jdk
     - name: Checkout the repo
       uses: actions/checkout@v2
+    - name: Cache dependancies
+    - uses: actions/cache@v2
+      with:
+        path: ~/.gradle/caches
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
             
     - name: Create Jar
       run: |
@@ -55,6 +69,13 @@ jobs:
         java-package: jdk
     - name: Checkout the repo
       uses: actions/checkout@v2
+    - name: Cache dependancies
+    - uses: actions/cache@v2
+      with:
+        path: ~/.gradle/caches
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
             
     - name: Bundle JAR with JRE and launcher script
       run: |
@@ -82,7 +103,7 @@ jobs:
     if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-18.04
     needs: [bundle_jre_images]
-    steps:
+    steps:    
     - name: Install JDK
       uses: actions/setup-java@v1.3.0
       with:
@@ -90,6 +111,13 @@ jobs:
         java-package: jdk
     - name: Checkout the repo
       uses: actions/checkout@v2
+    - name: Cache dependancies
+    - uses: actions/cache@v2
+      with:
+        path: ~/.gradle/caches
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
 
       
     - name: Install innoextract
