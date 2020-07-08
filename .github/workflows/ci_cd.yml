@@ -14,7 +14,7 @@ jobs:
     - name: Checkout the repo
       uses: actions/checkout@v2
     - name: Cache dependancies
-    - uses: actions/cache@v2
+      uses: actions/cache@v2
       with:
         path: ~/.gradle/caches
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
@@ -39,7 +39,7 @@ jobs:
     - name: Checkout the repo
       uses: actions/checkout@v2
     - name: Cache dependancies
-    - uses: actions/cache@v2
+      uses: actions/cache@v2
       with:
         path: ~/.gradle/caches
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
@@ -70,7 +70,7 @@ jobs:
     - name: Checkout the repo
       uses: actions/checkout@v2
     - name: Cache dependancies
-    - uses: actions/cache@v2
+      uses: actions/cache@v2
       with:
         path: ~/.gradle/caches
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
@@ -112,7 +112,7 @@ jobs:
     - name: Checkout the repo
       uses: actions/checkout@v2
     - name: Cache dependancies
-    - uses: actions/cache@v2
+      uses: actions/cache@v2
       with:
         path: ~/.gradle/caches
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}
