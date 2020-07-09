@@ -21,7 +21,6 @@ interface Component : Initializable {
             fxmlLoader.setControllerFactory {  controller }
 
             fxmlLoader.load<Any>()
-            val component = fxmlLoader.getController<Initializable>()
 
             return fxmlLoader.getRoot<T>()
         }
