@@ -12,13 +12,12 @@ import java.util.jar.Manifest
 
 fun main(){
     //checking updates
-    var manifestAttributes = Manifest(GitNarwhal::class.java.classLoader.getResource("META-INF/MANIFEST.MF").openStream()).mainAttributes;
+    var manifestAttributes = Manifest(GitNarwhal::class.java.classLoader?.getResource("META-INF/MANIFEST.MF")?.openStream()).mainAttributes;
     var version = manifestAttributes.getValue("Specification-Version")
-    println("RUNNING GITNARWHAL "+version)
+    println("Running GitNarwhal v$version")
 
     //ensuring git presence
-    println(Git.GIT)
-
+    println("Git location = ${Git.GIT}")
 
     Application.launch(GitNarwhal::class.java)
 }
@@ -27,7 +26,10 @@ class GitNarwhal() : Application() {
     override fun start(primaryStage: Stage) {
         primaryStage.scene = Scene(MainView().root)
         primaryStage.icons.add(Image(GitNarwhal::class.java.getResourceAsStream("/icon.png")));
-        primaryStage.show();
+        primaryStage.show()
+        //hackish stuff to make the window pop on top since it doesn't do that when the IDE starts it
+        primaryStage.isAlwaysOnTop = true;
+        primaryStage.isAlwaysOnTop = false;
     }
 
     companion object{
