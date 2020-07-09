@@ -1,9 +1,9 @@
 package com.gitnarwhal
 
-import com.gitnarwhal.utils.GitDownloader
 import com.gitnarwhal.views.MainView
 import javafx.application.Application
-import javafx.scene.Parent
+import javafx.fxml.FXMLLoader
+import javafx.fxml.Initializable
 import javafx.scene.Scene
 import javafx.scene.image.Image
 import javafx.stage.Stage
@@ -29,4 +29,17 @@ class GitNarwhal() : Application() {
         primaryStage.icons.add(Image(GitNarwhal::class.java.getResourceAsStream("/icon.png")));
         primaryStage.show();
     }
+
+    companion object{
+        fun <T> fxml(path: String, controller:Initializable?):T{
+            val fxmlLoader = FXMLLoader(GitNarwhal::class.java.getResource(path))
+            if (controller != null)
+                fxmlLoader.setControllerFactory {controller}
+
+            fxmlLoader.load<Any>()
+
+            return fxmlLoader.getRoot<T>()
+        }
+    }
+
 }

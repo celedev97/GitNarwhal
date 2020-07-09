@@ -13,17 +13,8 @@ interface Component : Initializable {
 
     companion object{
         @JvmStatic
-        fun <T> fxml(controller: Any): T {
-            println("INITIALIZATING: " + controller)
-
-            //loading Component from FXML
-            val fxmlLoader = FXMLLoader(GitNarwhal::class.java.getResource("/components/" + (controller.javaClass.simpleName) + ".fxml"))
-            fxmlLoader.setControllerFactory {  controller }
-
-            fxmlLoader.load<Any>()
-
-            return fxmlLoader.getRoot<T>()
-        }
+        fun <T> fxml(controller: Initializable): T =
+                GitNarwhal.fxml("/components/" + (controller.javaClass.simpleName) + ".fxml", controller)
     }
 
 }
