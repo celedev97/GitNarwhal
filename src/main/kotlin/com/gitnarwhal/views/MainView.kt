@@ -2,7 +2,6 @@ package com.gitnarwhal.views
 
 
 import com.gitnarwhal.components.RepoTab
-import com.gitnarwhal.views.View.Companion.fxml
 import javafx.fxml.FXML
 import javafx.scene.Parent
 import javafx.scene.control.TabPane
@@ -10,7 +9,7 @@ import java.net.URL
 import java.util.*
 
 class MainView : View {
-    val root:Parent = fxml(this);
+    val root:Parent = View.fxml(this);
 
     @FXML lateinit var tabPane : TabPane
 
