@@ -66,9 +66,16 @@ def javafx_dependencies_per_platform = javafx_platforms.collectEntries{ platform
 }
 
 dependencies {
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-    implementation 'org.kordamp.ikonli:ikonli-javafx:11.5.0'
-    implementation 'org.kordamp.ikonli:ikonli-materialdesign-pack:11.5.0'
+    //kotlin
+    implementation group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib', version: kotlin_version
+
+    //ikonli
+    implementation group: 'org.kordamp.ikonli', name: 'ikonli-javafx',                 version: '11.5.0'
+    implementation group: 'org.kordamp.ikonli', name: 'ikonli-materialdesign-pack',    version: '11.5.0'
+
+    //json
+    implementation group: 'org.json', name: 'json', version: '20200518'
+
 
 
     javafx_dependencies_per_platform.each { platform, deps ->
