@@ -1,5 +1,6 @@
 package com.gitnarwhal.utils
 
+import javafx.event.EventHandler
 import javafx.scene.control.Alert
 import javafx.scene.control.Dialog
 import javafx.scene.control.ProgressBar
@@ -11,16 +12,17 @@ import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import kotlin.system.exitProcess
 
 
 object GitDownloader{
     private val INTERNAL_GIT = "./git/bin/git${OS.EXE}"
 
-    private val where = Command("${OS.WHERE} git");
+    private val whereGit = Command("${OS.WHERE} git");
 
     val GIT:String = when{
         //if the where/which command gives a result then git is in PATH
-        where.execute() && where.output.isNotEmpty() && File(where.output.lines()[0]).exists() -> "git"
+        whereGit.execute() && whereGit.output.isNotEmpty() && File(whereGit.output.lines()[0]).exists() -> "git"
 
         //if the internal git exists than that's the git path
         File(INTERNAL_GIT).exists() -> INTERNAL_GIT
@@ -30,11 +32,17 @@ object GitDownloader{
             OS.WINDOWS -> downloadWindowsGit();
             OS.LINUX   -> downloadLinuxGit();
             OS.MAC     -> downloadMacGit();
-        }.absolutePath
+        }
     };
 
+    private val cantDoAnything = with(Alert(Alert.AlertType.ERROR)){
+        title = "Error"
+        contentText = "Impossible to find or install Git, download it and add it to path before using GitNarwhal"
+        this
+    }
 
-    private fun downloadWindowsGit(progress:ProgressBar? = null): File {
+
+    private fun downloadWindowsGit(progress:ProgressBar? = null): String {
         //getting latest release data
         val release = JSONObject(URL("https://api.github.com/repos/git-for-windows/git/releases/latest").readText())
         //extracting assets
@@ -60,18 +68,67 @@ object GitDownloader{
         Files.delete(tempGit)
 
         if(!execute || !Files.exists(Paths.get(INTERNAL_GIT))){
-            Dialog<Alert>().showAndWait()
-            throw Exception("Life sucks uwu")
+            cantDoAnything.showAndWait()
+            exitProcess(1)
         }
 
-        return File(INTERNAL_GIT)
+        return INTERNAL_GIT
     }
 
-    private fun downloadLinuxGit(progress:ProgressBar? = null): File {
-        TODO()
+    private fun downloadLinuxGit(progress:ProgressBar? = null): String {
+        var commandsStrings = arrayOf(
+                //debian
+                "apt-get install -y git",
+                //fedora
+                "yum -y install git",
+                "dnf -y install git",
+                //Gentoo
+                "emerge --verbose dev-vcs/git",
+                //Arch Linux
+                "pacman -S --noconfirm git",
+                //openSUSE
+                "zypper --non-interactive install git",
+                //Mageia
+                "urpmi --force git",
+                //Nix/NixOS
+                "nix-env -i git",
+                //FreeBSD
+                "pkg install -y git",
+                //Solaris 9/10/11 (OpenCSW)
+                "pkgutil -i -y  git",
+                //Solaris 11 Express
+                "pkg install -y  developer/versioning/git",
+                //OpenBSD
+                "pkg_add -a git",
+                //Alpine
+                "apk add git",
+                //Slitaz
+                "tazpkg get-install git"
+        )
+        var commands = commandsStrings.forEach {
+            //executing where on the command to be sure it's a valid command
+            var where = Command("${OS.WHERE} ${it.split(' ').first()}")
+            if(where.execute() && where.output.isNotEmpty()){
+                println("${it.split(' ').first()} FOUND!")
+                //command exists, calling it
+                val install = Command("pkexec $it")
+                if(install.execute()){
+                    println(install.output)
+                    //if git now exists
+                    if(whereGit.execute() && whereGit.output.isNotEmpty()){
+                        return "git"
+                    }
+                }
+            }else{
+                println("${it.split(' ').first()} not found")
+            }
+        }
+
+        cantDoAnything.showAndWait()
+        exitProcess(1)
     }
 
-    private fun downloadMacGit(progress:ProgressBar? = null): File {
+    private fun downloadMacGit(progress:ProgressBar? = null): String {
         TODO()
     }
 
