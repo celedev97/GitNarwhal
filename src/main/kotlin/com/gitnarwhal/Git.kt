@@ -1,10 +1,15 @@
 package com.gitnarwhal
 
-class Git(repo: String, path: String? = null) {
+import com.gitnarwhal.utils.GitDownloader
+
+class Git(repo: String) {
+    companion object{
+        val GIT:String = GitDownloader.GIT
+    }
+
     val repo = repo;
-    val git: String = if(path != null) "\"" + path + "\"" else "git"
 
     fun status(){
-        Runtime.getRuntime().exec(git+" status")
+        Runtime.getRuntime().exec("$GIT status")
     }
 }
