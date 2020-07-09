@@ -27,7 +27,7 @@ class RepoTab(path: String) : Tab(""), Component {
     }
 
     fun fetch(){
-        println(Git("/usr/bin/git").git)
+        println(Git(path))
     }
 
 }
