@@ -2,7 +2,7 @@ package com.gitnarwhal.utils
 
 import java.io.InputStream
 
-class Command(private val command: String) {
+class Command(val command: String) {
     var output: String = "";
     var error: String = "";
 
