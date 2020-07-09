@@ -1,7 +1,6 @@
 package com.gitnarwhal.components
 
 import com.gitnarwhal.Git
-import com.gitnarwhal.components.Component.Companion.fxml
 import javafx.scene.control.Tab
 
 class RepoTab(path: String) : Tab(""), Component {
@@ -14,7 +13,7 @@ class RepoTab(path: String) : Tab(""), Component {
 
     init {
         this.path = path
-        this.content = fxml(this)
+        this.content = Component.fxml(this)
     }
 
     fun commit(){
