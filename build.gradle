@@ -208,7 +208,7 @@ class JREPackager implements Plugin<Project> {
                             new File(innoDirPath + "/" + conf.iconFile.split("/").last()).toPath(),
                             StandardCopyOption.REPLACE_EXISTING
                     )
-                    println("COPIED ICON TO:" + innoDirPath + conf.iconFile.split("/").last())
+                    println("COPIED ICON TO:" + innoDirPath+ "/"  + conf.iconFile.split("/").last())
                 }
 
                 //replace version
