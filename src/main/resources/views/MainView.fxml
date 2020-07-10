@@ -35,6 +35,9 @@
                         <KeyCodeCombination alt="DOWN" code="F4" control="UP" meta="UP" shift="UP" shortcut="UP" />
                      </accelerator></MenuItem>
           </items>
+               <accelerator>
+                  <KeyCodeCombination alt="DOWN" code="F" control="UP" meta="UP" shift="UP" shortcut="UP" />
+               </accelerator>
         </Menu>
         <Menu mnemonicParsing="false" text="View">
           <items>
@@ -76,6 +79,9 @@
                      </accelerator></CheckMenuItem>
                   <CheckMenuItem mnemonicParsing="false" text="Show Tag Labels" />
           </items>
+               <accelerator>
+                  <KeyCodeCombination alt="DOWN" code="V" control="UP" meta="UP" shift="UP" shortcut="UP" />
+               </accelerator>
         </Menu>
             <Menu mnemonicParsing="false" text="Repository">
               <items>
@@ -178,6 +184,9 @@
                   <SeparatorMenuItem mnemonicParsing="false" />
                   <MenuItem mnemonicParsing="false" text="Benchmark Repo Performance" />
               </items>
+               <accelerator>
+                  <KeyCodeCombination alt="DOWN" code="R" control="UP" meta="UP" shift="UP" shortcut="UP" />
+               </accelerator>
             </Menu>
             <Menu mnemonicParsing="false" text="Actions">
               <items>
@@ -254,6 +263,9 @@
                   <SeparatorMenuItem mnemonicParsing="false" />
                   <MenuItem mnemonicParsing="false" text="Copy" />
               </items>
+               <accelerator>
+                  <KeyCodeCombination alt="DOWN" code="A" control="UP" meta="UP" shift="UP" shortcut="UP" />
+               </accelerator>
             </Menu>
             <Menu mnemonicParsing="false" text="Tools">
               <items>
@@ -264,11 +276,17 @@
                   <SeparatorMenuItem mnemonicParsing="false" />
                   <MenuItem mnemonicParsing="false" text="Options" />
               </items>
+               <accelerator>
+                  <KeyCodeCombination alt="DOWN" code="T" control="UP" meta="UP" shift="UP" shortcut="UP" />
+               </accelerator>
             </Menu>
         <Menu mnemonicParsing="false" text="Help">
           <items>
             <MenuItem mnemonicParsing="false" text="About GitNarwhal" />
           </items>
+               <accelerator>
+                  <KeyCodeCombination alt="DOWN" code="H" control="UP" meta="UP" shift="UP" shortcut="UP" />
+               </accelerator>
         </Menu>
       </menus>
          <opaqueInsets>
