@@ -154,7 +154,7 @@
             </VBox>
             <SplitPane dividerPositions="0.693516699410609" orientation="VERTICAL" prefHeight="200.0" prefWidth="160.0">
               <items>
-                  <TableView prefHeight="200.0" prefWidth="200.0" tableMenuButtonVisible="true">
+                  <TableView prefHeight="200.0" prefWidth="200.0" tableMenuButtonVisible="true" fx:id="commitTable">
                      <columns>
                         <TableColumn maxWidth="-1.0" minWidth="100.0" prefWidth="-1.0" text="Graph" />
                         <TableColumn maxWidth="-1.0" minWidth="100.0" prefWidth="-1.0" style="width: auto;" text="Description" />
