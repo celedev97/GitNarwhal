@@ -35,10 +35,12 @@ object GitDownloader{
         }
     };
 
-    private val cantDoAnything = with(Alert(Alert.AlertType.ERROR)){
-        title = "Error"
-        contentText = "Impossible to find or install Git, download it and add it to path before using GitNarwhal"
-        this
+    private val cantDoAnything = lazy {
+        with(Alert(Alert.AlertType.ERROR)){
+            title = "Error"
+            contentText = "Impossible to find or install Git, download it and add it to path before using GitNarwhal"
+            this
+        }
     }
 
 
@@ -68,7 +70,7 @@ object GitDownloader{
         Files.delete(tempGit)
 
         if(!execute || !Files.exists(Paths.get(INTERNAL_GIT))){
-            cantDoAnything.showAndWait()
+            cantDoAnything.value.showAndWait()
             exitProcess(1)
         }
 
@@ -105,7 +107,7 @@ object GitDownloader{
                 //Slitaz
                 "tazpkg get-install git"
         )
-        var commands = commandsStrings.forEach {
+        commandsStrings.forEach {
             //executing where on the command to be sure it's a valid command
             var where = Command("${OS.WHERE} ${it.split(' ').first()}")
             if(where.execute() && where.output.isNotEmpty()){
@@ -124,7 +126,7 @@ object GitDownloader{
             }
         }
 
-        cantDoAnything.showAndWait()
+        cantDoAnything.value.showAndWait()
         exitProcess(1)
     }
 
@@ -137,7 +139,7 @@ object GitDownloader{
         val downloadStream = URL(downloadURL).openStream()
 
         val buffer = ByteArray(1024)
-        var byteRead = -1
+        var byteRead : Int
         val totalSize = downloadStream.available()
         var downloadedSize = 0
         while (downloadStream.read(buffer).also { byteRead = it } > -1){
