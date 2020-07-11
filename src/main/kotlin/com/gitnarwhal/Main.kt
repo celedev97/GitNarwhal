@@ -39,13 +39,6 @@ class GitNarwhal() : Application() {
         //loading settings
     }
 
-    override fun stop() {
-        super.stop()
-
-        println("Closing")
-        Settings.write()
-    }
-
     companion object{
         fun <T> fxml(path: String, controller:Initializable?):T{
             val fxmlLoader = FXMLLoader(GitNarwhal::class.java.getResource(path))
