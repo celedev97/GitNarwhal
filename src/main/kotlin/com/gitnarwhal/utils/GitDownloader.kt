@@ -1,13 +1,10 @@
 package com.gitnarwhal.utils
 
-import javafx.event.EventHandler
 import javafx.scene.control.Alert
-import javafx.scene.control.Dialog
 import javafx.scene.control.ProgressBar
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.lang.Exception
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Path
@@ -22,7 +19,7 @@ object GitDownloader{
 
     val GIT:String = when{
         //if the where/which command gives a result then git is in PATH
-        whereGit.execute() && whereGit.output.isNotEmpty() && File(whereGit.output.lines()[0]).exists() -> "git"
+        whereGit.execute().success && whereGit.output.isNotEmpty() && File(whereGit.output.lines()[0]).exists() -> "git"
 
         //if the internal git exists than that's the git path
         File(INTERNAL_GIT).exists() -> INTERNAL_GIT
@@ -69,7 +66,7 @@ object GitDownloader{
 
         Files.delete(tempGit)
 
-        if(!execute || !Files.exists(Paths.get(INTERNAL_GIT))){
+        if(!execute.success || !Files.exists(Paths.get(INTERNAL_GIT))){
             cantDoAnything.value.showAndWait()
             exitProcess(1)
         }
@@ -110,14 +107,14 @@ object GitDownloader{
         commandsStrings.forEach {
             //executing where on the command to be sure it's a valid command
             var where = Command("${OS.WHERE} ${it.split(' ').first()}")
-            if(where.execute() && where.output.isNotEmpty()){
+            if(where.execute().success && where.output.isNotEmpty()){
                 println("${it.split(' ').first()} FOUND!")
                 //command exists, calling it
                 val install = Command("pkexec $it")
-                if(install.execute()){
+                if(install.execute().success){
                     println(install.output)
                     //if git now exists
-                    if(whereGit.execute() && whereGit.output.isNotEmpty()){
+                    if(whereGit.execute().success && whereGit.output.isNotEmpty()){
                         return "git"
                     }
                 }

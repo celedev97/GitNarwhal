@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+
+<TableView prefHeight="427.0" prefWidth="746.0" tableMenuButtonVisible="true" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="CommitTable">
+   <columns>
+      <TableColumn maxWidth="-1.0" minWidth="100.0" prefWidth="-1.0" text="Graph" />
+      <TableColumn maxWidth="200.0" minWidth="0.0" prefWidth="0.0" style="width: auto;" text="Description" />
+      <TableColumn maxWidth="200.0" minWidth="0.0" prefWidth="200.0" text="Date" />
+      <TableColumn maxWidth="-1.0" minWidth="100.0" prefWidth="-1.0" text="Author" />
+      <TableColumn maxWidth="345.0" minWidth="100.0" prefWidth="128.0" text="Commit" />
+   </columns>
+</TableView>

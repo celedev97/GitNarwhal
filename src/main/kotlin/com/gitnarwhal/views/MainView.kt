@@ -15,7 +15,7 @@ class MainView : View {
 
 
     override fun initialize(location: URL?, resources: ResourceBundle?) {
-        tabPane.tabs.add(RepoTab("D:\\Desktop\\repos\\architecture-helper"))
+        tabPane.tabs.add(RepoTab("./"))
     }
 
 }
