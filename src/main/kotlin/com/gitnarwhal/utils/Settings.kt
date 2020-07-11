@@ -8,36 +8,36 @@ import java.nio.file.Path
 import kotlin.reflect.KProperty
 import kotlin.reflect.full.memberProperties
 
-
-private const val CONFIG = "./gitnarwhal.json"
+//TODO: discover if you can write this in a better way, the fact that you have a class constant outside of the class it's horrible
 private val CONFIG = System.getProperty("user.home") + "/.gitnarwhal.json"
 private val settingsJSON = if(File(CONFIG).exists()) Files.readString(Path.of(CONFIG)) else "{}";
 
 object Settings : JSONObject(settingsJSON) {
-    val FILE = CONFIG;
-
     var autoUpdate by JSON(true)
     var theme by JSON("jar://stylesheets/main.css")
 
-    fun write() {
+
+    fun save() {
         //forcing a read on every declared property, this should set the default value for everything that doesn't have a value
         Settings.javaClass.kotlin.memberProperties.forEach{
-            var test = it.get(Settings)
+            val test = it.get(Settings)
             println(test)
         }
 
-        with(FileWriter(FILE)){
-            super.write(this, 4,0)
+        with(FileWriter(CONFIG)){
+            Settings.write(this, 4,0)
             this.close()
         }
     }
+
 }
 
 
-class JSON<T> (private val default: T) {
+
+private class JSON<T> (private val default: T) {
     operator fun setValue(settings: Settings, property: KProperty<*>, value: T) {
         settings.put(property.name, value)
-        Settings.write()
+        settings.save()
     }
 
     operator fun getValue(settings: Settings, property: KProperty<*>): T {
