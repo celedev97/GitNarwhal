@@ -1,5 +1,6 @@
 package com.gitnarwhal
 
+import com.gitnarwhal.backend.Git
 import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.views.MainView
 import javafx.application.Application
@@ -8,7 +9,6 @@ import javafx.fxml.Initializable
 import javafx.scene.Scene
 import javafx.scene.image.Image
 import javafx.stage.Stage
-import java.io.FileWriter
 
 import java.util.jar.Manifest
 

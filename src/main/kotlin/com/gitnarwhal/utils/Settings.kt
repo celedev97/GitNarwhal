@@ -13,39 +13,25 @@ private val CONFIG = System.getProperty("user.home") + "/.gitnarwhal.json"
 private val settingsJSON = if(File(CONFIG).exists()) Files.readString(Path.of(CONFIG)) else "{}";
 
 object Settings : JSONObject(settingsJSON) {
-    var autoUpdate by JSON(true)
-    var theme by JSON("jar://stylesheets/main.css")
+    val FILE = CONFIG
 
+    //TODO: you could add an optional callback to JSONSettings, so editing a property immediately call the callback that applies it.
 
-    fun save() {
-        //forcing a read on every declared property, this should set the default value for everything that doesn't have a value
-        Settings.javaClass.kotlin.memberProperties.forEach{
-            val test = it.get(Settings)
-            println(test)
-        }
-
-        with(FileWriter(CONFIG)){
-            Settings.write(this, 4,0)
-            this.close()
-        }
-    }
+    var autoUpdate  by JSONSetting(true)
+    var theme       by JSONSetting("jar://stylesheets/main.css")
 
 }
 
-
-
-private class JSON<T> (private val default: T) {
-    operator fun setValue(settings: Settings, property: KProperty<*>, value: T) {
-        settings.put(property.name, value)
-        settings.save()
+fun Settings.save() {
+    //forcing a read on every declared property, this should set the default value for everything that doesn't have a value
+    Settings.javaClass.kotlin.memberProperties.forEach{
+        val test = it.get(Settings)
+        println(test)
     }
 
-    operator fun getValue(settings: Settings, property: KProperty<*>): T {
-        if(!settings.has(property.name)){
-            setValue(settings, property, default)
-        }
-        @Suppress("UNCHECKED_CAST")
-        return settings.get(property.name) as T
+    with(FileWriter(Settings.FILE)){
+        Settings.write(this, 4,0)
+        this.close()
     }
-
 }
+
