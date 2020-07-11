@@ -2,10 +2,12 @@
 
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ContextMenu?>
+<?import javafx.scene.control.MenuItem?>
 <?import javafx.scene.control.ScrollPane?>
 <?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.SeparatorMenuItem?>
 <?import javafx.scene.control.SplitPane?>
-<?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.layout.AnchorPane?>
@@ -16,7 +18,7 @@
 <?import org.kordamp.ikonli.javafx.FontIcon?>
 <?import org.kordamp.ikonli.javafx.StackedFontIcon?>
 
-<VBox prefHeight="578.0" prefWidth="1325.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.gitnarwhal.views.RepoTab">
+<VBox prefHeight="589.0" prefWidth="1325.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.gitnarwhal.views.RepoTab">
    <children>
       <BorderPane prefHeight="65.0" prefWidth="718.0" styleClass="top-bar">
          <center>
@@ -147,16 +149,28 @@
             <SplitPane dividerPositions="0.693516699410609" orientation="VERTICAL" prefHeight="200.0" prefWidth="160.0">
               <items>
                   <TableView fx:id="commitTable" prefHeight="200.0" prefWidth="200.0" tableMenuButtonVisible="true">
-                     <columns>
-                        <TableColumn maxWidth="-1.0" minWidth="100.0" prefWidth="-1.0" text="Graph" />
-                        <TableColumn maxWidth="-1.0" minWidth="100.0" prefWidth="-1.0" style="width: auto;" text="Description" />
-                        <TableColumn maxWidth="-1.0" minWidth="100.0" prefWidth="-1.0" text="Date" />
-                        <TableColumn maxWidth="-1.0" minWidth="100.0" prefWidth="-1.0" text="Author" />
-                        <TableColumn maxWidth="-1.0" minWidth="100.0" prefWidth="-1.0" text="Commit" />
-                     </columns>
                      <columnResizePolicy>
                         <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
                      </columnResizePolicy>
+                     <contextMenu>
+                        <ContextMenu>
+                          <items>
+                            <MenuItem mnemonicParsing="false" text="Checkout" />
+                              <MenuItem mnemonicParsing="false" text="Merge" />
+                              <MenuItem mnemonicParsing="false" text="Rebase" />
+                              <MenuItem mnemonicParsing="false" text="Tag" />
+                              <MenuItem mnemonicParsing="false" text="Archive" />
+                              <MenuItem mnemonicParsing="false" text="Branch" />
+                              <MenuItem mnemonicParsing="false" text="Rebase (interactive)" />
+                              <SeparatorMenuItem mnemonicParsing="false" />
+                              <MenuItem mnemonicParsing="false" text="Move current branch to this commit" />
+                              <MenuItem mnemonicParsing="false" text="Create reverse commit" />
+                              <MenuItem mnemonicParsing="false" text="Create .diff file" />
+                              <MenuItem mnemonicParsing="false" text="Cherry pick" />
+                              <MenuItem mnemonicParsing="false" text="Copy hash to clipboard" />
+                          </items>
+                        </ContextMenu>
+                     </contextMenu>
                   </TableView>
                 <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="100.0" prefWidth="160.0" />
               </items>
