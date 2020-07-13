@@ -4,6 +4,7 @@ import com.gitnarwhal.backend.Commit
 import com.gitnarwhal.backend.Git
 import javafx.scene.Parent
 import javafx.scene.control.Tab
+import javafx.scene.control.TableCell
 import javafx.scene.control.TableView
 import org.json.JSONObject
 import tornadofx.*
@@ -35,6 +36,18 @@ class RepoTab(path: String) : Fragment() {
     init {
         this.path = path
         this.tab.content = root
+
+        commitTable.columns.clear()
+
+        commitTable.column("Graph",         Commit::graph).cellFormat {
+            graphic = item
+        }
+        commitTable.column("Description",   Commit::title)
+        commitTable.column("Date",          Commit::date)
+        commitTable.column("Author",        Commit::author)
+        commitTable.column("Commit",        Commit::commit)
+
+        refresh()
     }
 
     fun commit(){
@@ -46,12 +59,12 @@ class RepoTab(path: String) : Fragment() {
         var log = git.log()
         if(log.success){
             for (line in log.output.lines().asReversed()){
-                //if the line contains * then it's a commit
+                //if the line contains * then it's a commit TODO: replace contains with something like "is't before any alphanumerical thing"
                 if(line.contains('*')){
                     var commitJSON = JSONObject(line.substring(line.indexOf('{')))
                     var graphInfo  = line.substring(line.indexOf('*'))
 
-                    commitTable.items.add(Commit(commitJSON))
+                    commitTable.items.add(0, Commit(commitJSON, graphInfo))
                 }
             }
         }
