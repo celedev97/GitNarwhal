@@ -2,42 +2,40 @@ package com.gitnarwhal.components
 
 import com.gitnarwhal.backend.Commit
 import com.gitnarwhal.backend.Git
-import javafx.collections.FXCollections
-import javafx.collections.ObservableListBase
-import javafx.fxml.FXML
+import javafx.scene.Parent
 import javafx.scene.control.Tab
 import javafx.scene.control.TableView
-import javafx.scene.control.cell.PropertyValueFactory
 import org.json.JSONObject
+import tornadofx.*
 import java.net.URL
-import java.nio.file.Path
+import java.nio.file.Paths
 import java.util.*
 
-class RepoTab(path: String) : Tab(""), Component {
-
+class RepoTab(path: String) : Fragment() {
     //region class Fields
+    val tab = Tab()
+
     var path:String = ""
         set(value){
-            field = Path.of(value).toAbsolutePath().toString();
-            text = field.split("\\","/").last()
+            field = Paths.get(value).toAbsolutePath().toString();
+            val pieces = field.split("\\","/")
+            tab.text = if(pieces.last() != ".") pieces.last() else pieces[pieces.size-2]
         }
 
     var git = Git(this.path)
     //endregion
 
     //region FXML components
-    @FXML lateinit var commitTable : TableView<Commit>
+    override val root:Parent by fxml(null as String?, true)
+
+    val commitTable:TableView<Commit> by fxid()
     //endregion
+
 
     init {
         this.path = path
-        this.content = Component.fxml(this)
+        this.tab.content = root
     }
-
-    override fun initialize(location: URL?, resources: ResourceBundle?) {
-
-    }
-
 
     fun commit(){
         println("COMMIT!!!: $path")
