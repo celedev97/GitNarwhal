@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
+<?import org.kordamp.ikonli.javafx.StackedFontIcon?>
+
+<VBox prefHeight="578.0" prefWidth="1325.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.gitnarwhal.views.AddCloneTab">
+   <children>
+      <BorderPane prefHeight="65.0" prefWidth="718.0" style="-fx-background-color: lightgrey;">
+         <left>
+            <HBox prefHeight="67.0" prefWidth="935.0" BorderPane.alignment="CENTER">
+               <children>
+                  <Button contentDisplay="BOTTOM">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-plus-circle-outline" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Separator minWidth="20.0" orientation="VERTICAL" prefHeight="0.0" prefWidth="0.0" visible="false" />
+                  <Button fx:id="activateCloneTab" contentDisplay="BOTTOM" onAction="#switchTab" text="Clone">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-arrow-down-bold-circle-outline" iconSize="38" selectionEnd="0" selectionStart="0" />
+                     </graphic>
+                  </Button>
+                  <Button fx:id="activateAddTab" contentDisplay="BOTTOM" onAction="#switchTab" text="Add">
+                     <graphic>
+                        <FontIcon iconLiteral="mdi-arrow-up-bold-circle-outline" iconSize="38" />
+                     </graphic>
+                  </Button>
+                  <Button fx:id="activateCreateTab" contentDisplay="BOTTOM" onAction="#switchTab" text="Create">
+                     <graphic>
+                        <StackedFontIcon>
+                           <children>
+                              <FontIcon iconLiteral="mdi-refresh" iconSize="24" selectionEnd="0" selectionStart="0" stroke="BLACK" strokeLineJoin="BEVEL">
+                                 <font>
+                                    <Font name="System Bold" size="12.0" />
+                                 </font>
+                              </FontIcon>
+                              <FontIcon iconLiteral="mdi-checkbox-blank-circle-outline" iconSize="38" />
+                           </children>
+                        </StackedFontIcon>
+                     </graphic>
+                  </Button>
+               </children>
+               <opaqueInsets>
+                  <Insets />
+               </opaqueInsets>
+            </HBox>
+         </left>
+      </BorderPane>
+    <AnchorPane fx:id="container" minHeight="0.0" minWidth="0.0" VBox.vgrow="ALWAYS" />
+   </children>
+</VBox>

@@ -13,9 +13,20 @@ import java.nio.file.Paths
 import java.util.*
 
 class RepoTab(path: String) : Fragment() {
-    //region class Fields
-    val tab = Tab()
+    //region GUI components
+    override val root:Parent by fxml(null as String?, true)
 
+    val commitTable:TableView<Commit> by fxid()
+
+    val tab by lazy{
+        val tab = Tab()
+        tab.content = root
+        tab
+    }
+    //endregion
+
+
+    //region class Fields
     var path:String = ""
         set(value){
             field = Paths.get(value).toAbsolutePath().toString();
@@ -26,17 +37,10 @@ class RepoTab(path: String) : Fragment() {
     var git = Git(this.path)
     //endregion
 
-    //region FXML components
-    override val root:Parent by fxml(null as String?, true)
-
-    val commitTable:TableView<Commit> by fxid()
-    //endregion
 
 
     init {
         this.path = path
-        this.tab.content = root
-
         commitTable.columns.clear()
 
         commitTable.column("Graph",         Commit::graph).cellFormat {

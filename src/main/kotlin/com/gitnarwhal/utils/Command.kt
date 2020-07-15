@@ -1,5 +1,6 @@
 package com.gitnarwhal.utils
 
+import java.io.File
 import java.nio.file.Path
 
 class Command(vararg command: String, path: String = "./") {
@@ -8,7 +9,7 @@ class Command(vararg command: String, path: String = "./") {
     var success:Boolean = false;
     var code:Int = -1;
 
-    val workingDir = Path.of(path).toAbsolutePath().toFile()
+    val workingDir: File = Path.of(path).toAbsolutePath().toFile()
 
     private val command = run {
         var output = command.toList()
