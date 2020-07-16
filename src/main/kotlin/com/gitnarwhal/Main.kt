@@ -6,7 +6,7 @@ import com.gitnarwhal.views.MainView
 import javafx.application.Application
 import javafx.scene.image.Image
 import javafx.stage.Stage
-import tornadofx.App
+import tornadofx.*
 
 import java.util.jar.Manifest
 
@@ -16,6 +16,7 @@ fun main(){
 
 class GitNarwhal : App(MainView::class) {
     override fun start(stage: Stage) {
+        importStylesheet(GitNarwhal::class.java.getResource("/stylesheets/dark/global.css").toExternalForm())
         stage.icons.add(Image(GitNarwhal::class.java.getResourceAsStream("/icon.png")));
 
         //checking updates
