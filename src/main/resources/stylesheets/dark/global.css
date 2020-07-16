@@ -1,0 +1,78 @@
+/*region MainView*/
+/*MENU BAR*/
+.menu-bar{
+    -fx-background-color:  #263238;
+}
+.menu-bar .label{
+    -fx-text-fill: white;
+}
+
+/*TAB HEADER*/
+.tab-header-background, .tab{
+    -fx-background-color:  #263238;
+    -fx-border-color: #263238;
+}
+.tab{
+    -fx-background-color: #37474f;
+    -fx-border-width: 0 0 2 0;
+    -fx-padding:6 10 6 30;
+}
+
+.tab-label{
+    -fx-text-fill: white;
+    -fx-font-size: 16;
+}
+
+.tab .tab-close-button {
+    -fx-pref-width: 30;
+    -fx-shape-scale: true;
+    -fx-background-color: red;
+}
+
+.tab:selected{
+    -fx-border-color: #ffeb3b;
+}
+.tab:selected .focus-indicator {
+    -fx-border-width: 0;
+}
+/*endregion*/
+
+/*=======================*/
+/*REPO TAB*/
+.top-bar{
+    -fx-background-color: #37474f;
+}
+
+
+.top-bar .button{
+    -fx-background-color: #37474f;
+    -fx-border-width: 0 0 2 0;
+}
+
+.top-bar .button{
+    -fx-text-fill: white;
+}
+.top-bar .ikonli-font-icon{
+    -fx-icon-color: white;
+}
+
+.top-bar .button:hover {
+    -fx-background-color: #546e7a;
+}
+
+.top-bar .button:pressed {
+    -fx-background-color: #263238
+}
+
+
+.top-bar .button.active{
+    -fx-border-color: #ffeb3b;
+}
+
+.branch-button{
+    -fx-padding: 3 10;
+    -fx-font-size: 16;
+}
+.branch-button.active{
+    /*-fx-font-style: bold???*/
+}

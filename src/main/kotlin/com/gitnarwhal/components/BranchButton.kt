@@ -21,7 +21,7 @@ class BranchButton(name:String ,repo:RepoTab, selected: Boolean = false) : Label
 
     init {
         this.selected = selected
-        addClass("branchButton")
+        addClass("branch-button")
         onDoubleClick {
             if(repo.git.selectBranch(name).success){
                 println("CHECKOUT: $name")
