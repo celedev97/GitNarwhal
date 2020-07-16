@@ -19,9 +19,9 @@ class AddCloneTab: View() {
     }
 
     //region "Tab" buttons and contents
-    private val activateCloneTab by fxid<Button>()
-    private val activateAddTab by fxid<Button>()
-    private val activateCreateTab by fxid<Button>()
+    val activateCloneTab by fxid<Button>()
+    val activateAddTab by fxid<Button>()
+    val activateCreateTab by fxid<Button>()
 
     private val tabsMap = hashMapOf(
             activateCloneTab to CloneTab().root,
