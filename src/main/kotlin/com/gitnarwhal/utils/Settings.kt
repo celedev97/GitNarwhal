@@ -1,5 +1,6 @@
 package com.gitnarwhal.utils
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileWriter
@@ -20,18 +21,18 @@ object Settings : JSONObject(settingsJSON) {
     var autoUpdate  by JSONSetting(true)
     var theme       by JSONSetting("jar://stylesheets/main.css")
 
+    var openTabs    by JSONSetting(JSONArray())
+
 }
 
 fun Settings.save() {
-    //forcing a read on every declared property, this should set the default value for everything that doesn't have a value
-    Settings.javaClass.kotlin.memberProperties.forEach{
-        val test = it.get(Settings)
-        println(test)
-    }
-
-    with(FileWriter(Settings.FILE)){
-        Settings.write(this, 4,0)
-        this.close()
-    }
+    Thread{
+        synchronized(this){
+            with(FileWriter(Settings.FILE)){
+                Settings.write(this, 4,0)
+                this.close()
+            }
+        }
+    }.start()
 }
 
