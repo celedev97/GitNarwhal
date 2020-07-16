@@ -28,8 +28,8 @@ class MainView : View() {
     }
 
     init {
-        for(tab in Settings.openTabs.map { it as String }){
-            tabPane.tabs.add(RepoTab("./"), false)
+        for(path in Settings.openTabs.map { it as String }){
+            tabPane.tabs.add(RepoTab(path), false)
         }
 
         if(Settings.openTabs.isEmpty){
