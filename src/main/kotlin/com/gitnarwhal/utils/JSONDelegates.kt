@@ -5,15 +5,19 @@ import kotlin.reflect.KProperty
 
 open class JSONProperty<T> (private val default: T) {
     open operator fun setValue(json: JSONObject, property: KProperty<*>, value: T) {
-        json.put(property.name, value)
+        synchronized(json){
+            json.put(property.name, value)
+        }
     }
 
     open operator fun getValue(json: JSONObject, property: KProperty<*>): T {
-        if(!json.has(property.name)){
-            setValue(json, property, default)
+        synchronized(json){
+            if(!json.has(property.name)){
+                setValue(json, property, default)
+            }
+            @Suppress("UNCHECKED_CAST")
+            return json.get(property.name) as T
         }
-        @Suppress("UNCHECKED_CAST")
-        return json.get(property.name) as T
     }
 
 }
@@ -24,7 +28,7 @@ class JSONSetting<T> (private val default: T) : JSONProperty<T>(default) {
         settings.save()
     }
 
-    operator fun getValue(json: Settings, property: KProperty<*>): T {
-        return super.getValue(json, property)
+    operator fun getValue(settings: Settings, property: KProperty<*>): T {
+        return super.getValue(settings, property)
     }
 }

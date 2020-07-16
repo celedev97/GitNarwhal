@@ -15,7 +15,7 @@ import kotlin.system.exitProcess
 object GitDownloader{
     private val INTERNAL_GIT = "./git/bin/git${OS.EXE}"
 
-    private val whereGit = Command("${OS.WHERE} git");
+    val whereGit = Command("${OS.WHERE} git");
 
     val GIT:String = when{
         //if the where/which command gives a result then git is in PATH
@@ -32,14 +32,13 @@ object GitDownloader{
         }
     };
 
-    private val cantDoAnything = lazy {
+    private val cantDoAnything by lazy {
         with(Alert(Alert.AlertType.ERROR)){
             title = "Error"
             contentText = "Impossible to find or install Git, download it and add it to path before using GitNarwhal"
             this
         }
     }
-
 
     private fun downloadWindowsGit(progress:ProgressBar? = null): String {
         //getting latest release data
@@ -67,7 +66,7 @@ object GitDownloader{
         Files.delete(tempGit)
 
         if(!execute.success || !Files.exists(Paths.get(INTERNAL_GIT))){
-            cantDoAnything.value.showAndWait()
+            cantDoAnything.showAndWait()
             exitProcess(1)
         }
 
@@ -123,7 +122,7 @@ object GitDownloader{
             }
         }
 
-        cantDoAnything.value.showAndWait()
+        cantDoAnything.showAndWait()
         exitProcess(1)
     }
 
