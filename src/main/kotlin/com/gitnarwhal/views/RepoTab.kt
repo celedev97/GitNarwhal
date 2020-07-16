@@ -2,11 +2,13 @@ package com.gitnarwhal.views
 
 import com.gitnarwhal.backend.Commit
 import com.gitnarwhal.backend.Git
+import com.gitnarwhal.components.BranchButton
 import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.utils.save
 import javafx.scene.Parent
 import javafx.scene.control.Tab
 import javafx.scene.control.TableView
+import javafx.scene.layout.VBox
 import tornadofx.*
 import java.nio.file.Paths
 import java.util.*
@@ -23,6 +25,9 @@ class RepoTab(path: String) : Fragment() {
         tab.content = root
         tab
     }
+
+    val localBranchesBox:VBox by fxid()
+    val remoteBranchesBox:VBox by fxid()
     //endregion
 
 
@@ -34,13 +39,14 @@ class RepoTab(path: String) : Fragment() {
             tab.text = if(pieces.last() != ".") pieces.last() else pieces[pieces.size-2]
         }
 
-    var git = Git(this.path)
+    var git: Git
     //endregion
 
 
 
     init {
         this.path = path
+        this.git = Git(this.path)
 
         tab.setOnClosed {
             for (i in 0..Settings.openTabs.count()){
@@ -54,9 +60,7 @@ class RepoTab(path: String) : Fragment() {
 
         commitTable.columns.clear()
 
-        commitTable.column("Graph",         Commit::graph).cellFormat {
-            graphic = item
-        }
+        commitTable.column("Graph",         Commit::graph).cellFormat {graphic = item}
         commitTable.column("Description",   Commit::title)
         commitTable.column("Date",          Commit::date)
         commitTable.column("Author",        Commit::author)
@@ -71,48 +75,76 @@ class RepoTab(path: String) : Fragment() {
     }
 
     fun refresh(){
-        Commit.commits.clear()
-
-        var commitIndentation = HashMap<String, Int>()
-        var parentChilds = HashMap<String, Int>()
-
-        var log = git.log()
-        if(log.success){
-            for (line in log.output.lines().map { it.replace('\'',' ').trim() }){
-                //splitting the commit line
-                val split = line.split(" ")
-
-                //dividing commit from parents
-                val hash = split[0]
-                val parents = if(split.size>1) split.subList(1,split.size) else listOf()
-
-                //finding the parent minimum indentation
-                var indentation = parents.map { commitIndentation[it] as Int }.min() ?: 0
-
-                //the real indentation is that one + the the number of commits that i've added as childs to that parent
-                parents.forEach{
-                    indentation += parentChilds[it] ?: 0
-                    parentChilds[it] = (parentChilds[it] ?: 0) +1
-                }
-
-                //adding the found indentation to the comments indentations for next commits
-                commitIndentation[hash] = indentation
-
-                //creating the commit
-                val commit = Commit(hash, indentation, parents.map{Commit.commits[it]} as List<Commit>)
-
-                //adding it to the commit hashmap and to the commit table
-                Commit.commits[hash] = commit
-                commitTable.items.add(0, commit)
-            }
-        }
-
-        println(Git(path).log().output)
+        refreshBranches()
+        refreshCommits()
     }
 
     fun fetch(){
         git.fetch();
         refresh()
+    }
+
+    fun refreshCommits(){
+        val log = git.log()
+        if(!log.success)
+            return
+
+        commitTable.items.clear()
+        var commits = hashMapOf<String,Commit>()
+        for (hashes in log.output.lines().map { it.replace("".toRegex(),"").trim().split(" ") }){
+            //creating commits for hashes found if they doesn't exists
+            hashes.forEach {
+                if(!commits.contains(it))
+                    commits[it] = Commit(it, this)
+            }
+
+            //separating parents from commit
+            val commit = commits[hashes[0]]!!
+            val parents = if(hashes.size>1) hashes.subList(1,hashes.size).map { commits[it]!! } else listOf()
+
+            //linking parents to child and child to parents
+            parents.forEach { parent->
+                parent.childs.add(commit)
+                commit.parents.add(parent)
+            }
+
+            //TODO: commit.column = helpmeplease
+        }
+
+        commits.forEach{ (_, commit) ->
+            commitTable.items.add(commit)
+        }
+
+    }
+
+    fun refreshBranches() {
+        var gitBranches = git.branches()
+        if(!gitBranches.success)
+            return
+
+        localBranchesBox.children.clear()
+        remoteBranchesBox.children.clear()
+
+        for (line in gitBranches.output.lines()){
+            val branchParts = line.removePrefix("*").trim().replace("\\s+".toRegex(), " ").split(" ")
+            val branchFullName  = branchParts[0]
+            val branchShortName = branchFullName.substringAfter('/')
+
+            val branchButton = BranchButton(branchShortName, this,line[0] == '*')
+
+            if(branchShortName == branchFullName){
+                //LOCAL BRANCH
+                localBranchesBox.children.add(branchButton)
+                branchButton.tracking = "^\\[(\\w\\w*\\/*\\w\\w*)\\]".toRegex().find(branchParts[2])?.groups?.get(1)?.value
+
+                println()
+
+            }else{
+                //REMOTE BRANCH
+                remoteBranchesBox.children.add(branchButton)
+            }
+        }
+
     }
 
 }
