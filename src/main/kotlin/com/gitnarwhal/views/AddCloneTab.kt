@@ -7,7 +7,7 @@ import javafx.scene.control.Button
 import javafx.scene.control.Tab
 import tornadofx.*
 
-class AddCloneTab: View() {
+class AddCloneTab(val mainView: MainView): View() {
     override val root:Parent by fxml(null as String?, true)
 
     private val container by fxid<Parent>();
@@ -24,9 +24,9 @@ class AddCloneTab: View() {
     val activateCreateTab by fxid<Button>()
 
     private val tabsMap = hashMapOf(
-            activateCloneTab to CloneTab().root,
-            activateAddTab to AddTab().root,
-            activateCreateTab to CreateTab().root
+            activateCloneTab to CloneTab(this).root,
+            activateAddTab to AddTab(this).root,
+            activateCreateTab to CreateTab(this).root
     )
     //endregion
 

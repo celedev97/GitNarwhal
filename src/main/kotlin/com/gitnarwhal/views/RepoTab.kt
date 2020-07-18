@@ -39,16 +39,6 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
         tab.text = tabName
         this.git = Git(this.path)
 
-        tab.setOnClosed {
-            for (i in 0..Settings.openTabs.count()){
-                if((Settings.openTabs[i] as String) == this.path){
-                    Settings.openTabs.remove(i)
-                    break
-                }
-            }
-            Settings.save()
-        }
-
         commitTable.columns.clear()
 
         commitTable.column("Graph",         Commit::graph).cellFormat {graphic = item}

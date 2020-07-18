@@ -23,21 +23,19 @@ class MainView : View() {
 
     private var moving = false;
 
-    private val plusTab = with(Tab("+")){
-        addClass("addTab")
-        isClosable = false
-        whenSelected { addNewCloneTab() }
-        this
-    }
+    val plusTab:Tab by fxid()
 
     init {
+        plusTab.whenSelected { addNewCloneTab() }
+
+        //region loading last open tabs
         try{
             val toRemove = arrayListOf<JSONObject>();
             for(tab in Settings.openTabs.map { it as JSONObject }){
                 val path = tab.getString("path").toPath()
                 val name = tab.getString("name")
                 if(Files.isDirectory(path)){
-                    tabPane.tabs.add(RepoTab(path.toAbsolutePath().toString(), name), false)
+                    addTab(RepoTab(path.toAbsolutePath().toString(), name), false)
                 }else{
                     toRemove.add(tab)
                 }
@@ -48,52 +46,53 @@ class MainView : View() {
             Settings.openTabs.removeAll { true }
         }
         Settings.save()
-
+        //endregion
 
         if(Settings.openTabs.isEmpty){
-            tabPane.tabs.add(AddCloneTab().tab)
+            addNewCloneTab()
         }
 
-        tabPane.tabs.add(plusTab)
+        selectTab(tabPane.tabs.first())
 
-        tabPane.tabs.addListener(ListChangeListener{
-            if(!moving && tabPane.tabs.last() != plusTab){
-                moving = true
-                tabPane.tabs.remove(plusTab)
-                tabPane.tabs.add(plusTab)
-                moving = false
-            }
-        })
     }
 
-    fun addNewCloneTab() : AddCloneTab{
-        val newTab = AddCloneTab()
+    fun addTab(tab:Tab) =  tabPane.tabs.add(tabPane.tabs.size-1, tab)
+    fun closeTab(tab: Tab) = tabPane.tabs.remove(tab)
+    fun selectTab(tab: Tab) = tabPane.selectionModel.select(tab)
+    fun selectTab(repo: RepoTab) = tabPane.selectionModel.select(repo.tab)
 
-        tabPane.tabs.add(tabPane.tabs.size-1, newTab.tab)
-        tabPane.selectionModel.select(newTab.tab)
+    fun addTab(repo:RepoTab, save:Boolean = true){
+        addTab(repo.tab)
 
-        return newTab
-    }
-
-    fun addNewOpenTab() {
-        var newTab = addNewCloneTab()
-        newTab.switchTab(newTab.activateAddTab)
-    }
-
-
-    private fun ObservableList<Tab>.add(repo: RepoTab, save:Boolean = true) {
-        tabPane.tabs.add(repo.tab)
+        repo.tab.setOnClosed {
+            Settings.openTabs.removeAll { (it as JSONObject).getString("path") == repo.path }
+            Settings.save()
+        }
 
         if(save){
             Settings.openTabs.put(
                     with(JSONObject()){
-                        put("name",  repo.tab.text)
+                        put("name", repo.tab.text)
                         put("path", repo.path)
                         this
                     }
             )
             Settings.save()
         }
+    }
+
+    fun addNewCloneTab() : AddCloneTab{
+        val newTab = AddCloneTab(this)
+
+        addTab(newTab.tab)
+        selectTab(newTab.tab)
+
+        return newTab
+    }
+
+    fun addNewOpenTab() {
+        val newTab = addNewCloneTab()
+        newTab.switchTab(newTab.activateAddTab)
     }
 
 }

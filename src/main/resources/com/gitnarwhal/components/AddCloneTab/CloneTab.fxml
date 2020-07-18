@@ -16,7 +16,7 @@
 <?import javafx.scene.text.Font?>
 <?import javafx.scene.text.Text?>
 
-<Pane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1">
+<Pane fx:controller="com.gitnarwhal.components.AddCloneTab.CloneTab" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1">
    <children>
       <VBox layoutX="30.0" layoutY="18.0" prefHeight="215.0" prefWidth="558.0">
          <children>
@@ -84,7 +84,7 @@
             <Spinner layoutX="164.0" layoutY="62.0" />
             <CheckBox layoutX="327.0" layoutY="35.0" mnemonicParsing="false" text="Recurse submodules" />
             <CheckBox layoutX="327.0" layoutY="62.0" mnemonicParsing="false" text="No Hardlinks" />
-            <Button layoutX="-2.0" layoutY="104.0" mnemonicParsing="false" prefHeight="32.0" prefWidth="97.0" text="Clone" />
+            <Button onAction="#run" layoutX="-2.0" layoutY="104.0" mnemonicParsing="false" prefHeight="32.0" prefWidth="97.0" text="Clone" />
             <CheckBox layoutY="1.0" mnemonicParsing="false" text="Advanced Options?" />
          </children>
       </Pane>

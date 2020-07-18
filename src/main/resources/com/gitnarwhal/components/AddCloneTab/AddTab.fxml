@@ -2,6 +2,7 @@
 
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.ColumnConstraints?>
 <?import javafx.scene.layout.GridPane?>
 <?import javafx.scene.layout.Pane?>
@@ -10,8 +11,7 @@
 <?import javafx.scene.text.Font?>
 <?import javafx.scene.text.Text?>
 
-<?import javafx.scene.control.TextField?>
-<Pane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1">
+<Pane maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.gitnarwhal.components.AddCloneTab.AddTab">
    <children>
       <VBox layoutX="30.0" layoutY="18.0" prefHeight="215.0" prefWidth="558.0">
          <children>
@@ -31,9 +31,9 @@
                 <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
               </rowConstraints>
                <children>
-                  <TextField prefWidth="318.0" promptText="Working Copy Path:" />
-                  <TextField promptText="Name:" GridPane.rowIndex="1" />
-                  <Button mnemonicParsing="false" prefHeight="29.0" prefWidth="88.0" text="Browse..." GridPane.columnIndex="1" />
+                  <TextField fx:id="path" prefWidth="318.0" promptText="Working Copy Path:" />
+                  <TextField fx:id="name" promptText="Name:" GridPane.rowIndex="1" />
+                  <Button mnemonicParsing="false" onAction="#browse" prefHeight="29.0" prefWidth="88.0" text="Browse..." GridPane.columnIndex="1" />
                </children>
             </GridPane>
             <GridPane hgap="10.0" prefWidth="558.0" vgap="10.0">
@@ -57,6 +57,6 @@
             </GridPane>
          </children>
       </VBox>
-      <Button layoutX="30.0" layoutY="216.0" mnemonicParsing="false" prefHeight="32.0" prefWidth="95.0" text="Add" />
+      <Button layoutX="30.0" layoutY="216.0" mnemonicParsing="false" onAction="#run" prefHeight="32.0" prefWidth="95.0" text="Add" />
    </children>
 </Pane>
