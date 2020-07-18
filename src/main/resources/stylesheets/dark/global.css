@@ -10,12 +10,18 @@
 /*TAB HEADER*/
 .tab-header-background, .tab{
     -fx-background-color:  #263238;
-    -fx-border-color: #263238;
+    -fx-border-color: #37474f;
 }
 .tab{
     -fx-background-color: #37474f;
     -fx-border-width: 0 0 2 0;
     -fx-padding:6 10 6 30;
+}
+.tab.addTab{
+    -fx-padding:6 10 6 10;
+}
+.addTab .tab-label{
+    -fx-font-weight:900;
 }
 
 .tab-label{
