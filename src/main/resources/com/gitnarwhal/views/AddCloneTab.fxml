@@ -13,15 +13,10 @@
 
 <VBox prefHeight="578.0" prefWidth="1325.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.gitnarwhal.views.AddCloneTab">
    <children>
-      <BorderPane prefHeight="65.0" prefWidth="718.0" style="-fx-background-color: lightgrey;">
+      <BorderPane prefHeight="65.0" prefWidth="718.0" styleClass="top-bar">
          <left>
             <HBox prefHeight="67.0" prefWidth="935.0" BorderPane.alignment="CENTER">
                <children>
-                  <Button contentDisplay="BOTTOM">
-                     <graphic>
-                        <FontIcon iconLiteral="mdi-plus-circle-outline" iconSize="38" selectionEnd="0" selectionStart="0" />
-                     </graphic>
-                  </Button>
                   <Separator minWidth="20.0" orientation="VERTICAL" prefHeight="0.0" prefWidth="0.0" visible="false" />
                   <Button fx:id="activateCloneTab" contentDisplay="BOTTOM" onAction="#switchTab" text="Clone">
                      <graphic>

@@ -39,7 +39,7 @@ class AddCloneTab: View() {
 
     fun switchTab(tabButton:Button) {
         //switching the active status
-        tabsMap.values.forEach{it.removeClass("active")}
+        tabsMap.keys.forEach{it.removeClass("active")}
         tabButton.addClass("active")
 
         //replacing the container content

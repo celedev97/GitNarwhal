@@ -14,7 +14,7 @@ import java.nio.file.Paths
 import java.util.*
 import kotlin.collections.HashMap
 
-class RepoTab(path: String) : Fragment() {
+class RepoTab(var path: String, tabName: String) : Fragment() {
     //region GUI components
     override val root:Parent by fxml(null as String?, true)
 
@@ -30,22 +30,13 @@ class RepoTab(path: String) : Fragment() {
     val remoteBranchesBox:VBox by fxid()
     //endregion
 
-
-    //region class Fields
-    var path:String = ""
-        set(value){
-            field = Paths.get(value).toAbsolutePath().toString();
-            val pieces = field.split("\\","/")
-            tab.text = if(pieces.last() != ".") pieces.last() else pieces[pieces.size-2]
-        }
-
     var git: Git
     //endregion
 
 
 
     init {
-        this.path = path
+        tab.text = tabName
         this.git = Git(this.path)
 
         tab.setOnClosed {
