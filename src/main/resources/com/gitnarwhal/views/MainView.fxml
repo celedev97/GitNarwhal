@@ -7,6 +7,7 @@
 <?import javafx.scene.control.MenuBar?>
 <?import javafx.scene.control.MenuItem?>
 <?import javafx.scene.control.SeparatorMenuItem?>
+<?import javafx.scene.control.Tab?>
 <?import javafx.scene.control.TabPane?>
 <?import javafx.scene.input.KeyCodeCombination?>
 <?import javafx.scene.layout.HBox?>
@@ -21,11 +22,11 @@
       <menus>
         <Menu mnemonicParsing="false" text="File">
           <items>
-            <MenuItem mnemonicParsing="false" text="Clone/New" onAction="#addNewCloneTab">
+            <MenuItem mnemonicParsing="false" onAction="#addNewCloneTab" text="Clone/New">
                      <accelerator>
                         <KeyCodeCombination alt="UP" code="N" control="DOWN" meta="UP" shift="UP" shortcut="UP" />
                      </accelerator></MenuItem>
-            <MenuItem mnemonicParsing="false" text="Open…" onAction="#addNewOpenTab">
+            <MenuItem mnemonicParsing="false" onAction="#addNewOpenTab" text="Open…">
                      <accelerator>
                         <KeyCodeCombination alt="UP" code="O" control="DOWN" meta="UP" shift="UP" shortcut="UP" />
                      </accelerator></MenuItem>
@@ -293,7 +294,10 @@
             <Insets />
          </opaqueInsets>
     </MenuBar>
-      <TabPane fx:id="tabPane" prefHeight="200.0" prefWidth="200.0" tabClosingPolicy="ALL_TABS" tabDragPolicy="REORDER" VBox.vgrow="ALWAYS" />
+      <TabPane fx:id="tabPane" prefHeight="200.0" prefWidth="200.0" tabClosingPolicy="ALL_TABS" tabDragPolicy="REORDER" VBox.vgrow="ALWAYS">
+         <tabs>
+            <Tab fx:id="plusTab" closable="false" styleClass="addTab" text="+" />
+         </tabs></TabPane>
     <HBox id="HBox" alignment="CENTER_LEFT" spacing="5.0" VBox.vgrow="NEVER">
       <children>
         <Label maxHeight="1.7976931348623157E308" maxWidth="-1.0" text="Left status" HBox.hgrow="ALWAYS">
