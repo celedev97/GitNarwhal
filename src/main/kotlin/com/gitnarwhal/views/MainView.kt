@@ -4,13 +4,16 @@ package com.gitnarwhal.views
 import com.gitnarwhal.backend.Git
 import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.utils.save
+import com.gitnarwhal.utils.toPath
 import javafx.collections.ListChangeListener
 import javafx.collections.ObservableList
 import javafx.scene.Parent
 import javafx.scene.control.Tab
 import javafx.scene.control.TabPane
 import javafx.scene.control.skin.TabPaneSkin
+import org.json.JSONObject
 import tornadofx.*
+import java.lang.Exception
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -28,12 +31,27 @@ class MainView : View() {
     }
 
     init {
-        for(path in Settings.openTabs.map { it as String }){
-            tabPane.tabs.add(RepoTab(path), false)
+        try{
+            val toRemove = arrayListOf<JSONObject>();
+            for(tab in Settings.openTabs.map { it as JSONObject }){
+                val path = tab.getString("path").toPath()
+                val name = tab.getString("name")
+                if(Files.isDirectory(path)){
+                    tabPane.tabs.add(RepoTab(path.toAbsolutePath().toString(), name), false)
+                }else{
+                    toRemove.add(tab)
+                }
+            }
+            Settings.openTabs.removeAll { toRemove.contains(it as JSONObject) }
+        }catch (ignored:Exception){
+            println("Open tabs loading error")
+            Settings.openTabs.removeAll { true }
         }
+        Settings.save()
+
 
         if(Settings.openTabs.isEmpty){
-            tabPane.tabs.add(RepoTab("./"))//TODO: remove this later and replace it with a clone tab
+            tabPane.tabs.add(AddCloneTab().tab)
         }
 
         tabPane.tabs.add(plusTab)
@@ -67,7 +85,13 @@ class MainView : View() {
         tabPane.tabs.add(repo.tab)
 
         if(save){
-            Settings.openTabs.put(repo.path)
+            Settings.openTabs.put(
+                    with(JSONObject()){
+                        put("name",  repo.tab.text)
+                        put("path", repo.path)
+                        this
+                    }
+            )
             Settings.save()
         }
     }
