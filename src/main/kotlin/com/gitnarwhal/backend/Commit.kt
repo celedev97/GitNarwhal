@@ -39,18 +39,21 @@ class Commit(hash:String, val repoTab: RepoTab){
 
 open class GitShow(){
     operator fun getValue(commit: Commit, property: KProperty<*>): Any {
-        if(commit.data == null)
-            with(commit.repoTab.git.show(commit)){
+        if(commit.data == null) {
+            with(commit.repoTab.git.show(commit)) {
                 if (!success)
                     throw Exception("can't get data for commit: ${commit.hash}")
                 commit.data = output.lines()
             }
+        }
 
-        return when(property.name) {
-            "title" -> commit.data!![4].trim()
-            "date" -> commit.data!![2].substringAfter(':').trim()
-            "author" -> commit.data!![1].substringAfter(':').trim()
-            else -> throw Exception("Don't know how to parse property: ${property.name}")
+        with(commit.data!!){
+            return when(property.name) {
+                "author" -> this[0]
+                "date" ->   this[1]
+                "title" ->  this[2]
+                else -> throw Exception("Don't know how to parse property: ${property.name}")
+            }
         }
     }
 
