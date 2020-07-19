@@ -32,7 +32,7 @@ class Command(vararg command: String, path: String = "./") {
     }
 
 
-    fun execute(path:String?): Command {
+    fun execute(path:String? = null): Command {
         //path override for localized commands
         var realWorkingDirectory = workingDirFile
         if(path != null){
