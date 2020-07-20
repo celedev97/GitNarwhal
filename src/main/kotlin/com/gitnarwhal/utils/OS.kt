@@ -1,5 +1,11 @@
 package com.gitnarwhal.utils
 
+import com.gitnarwhal.backend.Git
+import com.gitnarwhal.utils.Command
+import tornadofx.*
+import java.lang.Exception
+import java.nio.file.Files
+import java.nio.file.Path
 import javax.swing.JOptionPane
 
 enum class OS{
@@ -27,8 +33,48 @@ enum class OS{
             else -> ""
         }
 
-    }
+        val EXPLORER = when(CURRENT){
+            WINDOWS -> Command("explorer")
+            LINUX   -> Command("xdg-open")
+            MAC     -> Command("open")
+        }
 
+        val BROWSER = when(CURRENT){
+            WINDOWS -> Command("cmd /c START")
+            LINUX   -> EXPLORER
+            MAC     -> EXPLORER
+        }
+
+        val TERMINAL by lazy{
+            when(CURRENT){
+                WINDOWS -> run {
+                    //if git bash exists than use that as the terminal
+                    val gitBash = Git.GIT.removeSuffix("cmd\\git.exe") + "git-bash.exe"
+                    if(Files.exists(Path.of(gitBash))){
+                        return@run Command(gitBash)
+                    }
+
+                    var command: Command? = null
+
+                    //fallback to pwsh
+                    command = Command.find("pwsh")
+                    if(command != null)
+                        return@run command!!
+
+                    //fallback again to powershell
+                    command = Command.find("powershell")
+                    if(command != null)
+                        return@run command!!
+
+                    //if there's literally nothing else than use cmd
+                    Command("cmd")
+                }
+                LINUX   -> Command("x-terminal-emulator")
+                else -> Command("open -a Terminal") //TODO: this need testing
+            }
+        }
+
+    }
 }
 
 fun String.containsOne(vararg needles:String): Boolean{
