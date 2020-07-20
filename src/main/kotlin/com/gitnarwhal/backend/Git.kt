@@ -2,12 +2,33 @@ package com.gitnarwhal.backend
 
 import com.gitnarwhal.utils.Command
 import com.gitnarwhal.utils.GitDownloader
+import com.gitnarwhal.utils.OS
+import com.gitnarwhal.backend.Git.Companion
 
 class Git(val repo: String) {
     companion object{
-        val GIT:String = GitDownloader.GIT
-        const val FAKE_SEP = "g\\nrwl?/>"
-        const val FORMAT = "{${FAKE_SEP}commit${FAKE_SEP}:${FAKE_SEP}%H${FAKE_SEP},${FAKE_SEP}author${FAKE_SEP}:${FAKE_SEP}%aN<%aE>${FAKE_SEP},${FAKE_SEP}date${FAKE_SEP}:${FAKE_SEP}%ad${FAKE_SEP},${FAKE_SEP}description${FAKE_SEP}:${FAKE_SEP}%f${FAKE_SEP}}"
+        private val INTERNAL_GIT = "./git/bin/git${OS.EXE}"
+
+        private var WHERE = Command.find("git")
+            private set
+
+        val GIT:String = when{
+            //if the where/which command gives a result then git is in PATH
+            WHERE != null -> WHERE.toString()
+
+            //if the internal git exists than that's the git path
+            java.io.File(INTERNAL_GIT).exists() -> INTERNAL_GIT
+
+            //if neither are true then i need to download git
+            else -> when(OS.CURRENT){
+                OS.WINDOWS -> run {
+                    GitDownloader.downloadWindowsGit();
+                    INTERNAL_GIT
+                };
+                OS.LINUX   -> GitDownloader.downloadLinuxGit();
+                OS.MAC     -> GitDownloader.downloadMacGit();
+            }
+        };
     }
 
     private fun git(vararg command:String, prependGit: Boolean = true) : Command{
@@ -20,7 +41,6 @@ class Git(val repo: String) {
 
         return Command(*realCommand, path = repo).execute()
     }
-
 
     fun status() = git("status")
 
@@ -39,5 +59,6 @@ class Git(val repo: String) {
     fun show(commit:Commit) = show(commit.hash)
     fun show(commitHash:String) = git("--no-pager", "show", commitHash ,"-s", "--pretty=format:%cN <%cE>%n%cd%n%s")
 
+    fun remoteUrl(remote: String = "origin") = git("config", "--get", "remote.$remote.url")
 
 }
