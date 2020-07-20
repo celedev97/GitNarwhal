@@ -82,5 +82,5 @@
     -fx-font-size: 16;
 }
 .branch-button.active{
-    /*-fx-font-style: bold???*/
+    -fx-font-weight: bold;
 }

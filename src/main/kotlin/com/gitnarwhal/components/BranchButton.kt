@@ -14,7 +14,11 @@ class BranchButton(name:String ,repo:RepoTab, selected: Boolean = false) : Label
         }
         set(value){
             field = value
-            font = Font.font(font.family, if(value) FontWeight.BOLD else FontWeight.NORMAL, font.size)
+            if(field){
+                addClass("active")
+            }else{
+                removeClass("active")
+            }
         }
 
     var tracking: String? = null
