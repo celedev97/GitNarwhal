@@ -92,17 +92,17 @@
          <right>
             <HBox prefHeight="100.0" prefWidth="200.0" BorderPane.alignment="CENTER">
                <children>
-                  <Button contentDisplay="BOTTOM" minWidth="65.0" text="Remote">
+                  <Button onAction="#openRemote" contentDisplay="BOTTOM" minWidth="65.0" text="Remote">
                      <graphic>
                         <FontIcon iconLiteral="mdi-earth" iconSize="38" selectionEnd="0" selectionStart="0" />
                      </graphic>
                   </Button>
-                  <Button contentDisplay="BOTTOM" minWidth="65.0" text="Terminal">
+                  <Button onAction="#openTerminal" contentDisplay="BOTTOM" minWidth="65.0" text="Terminal">
                      <graphic>
                         <FontIcon iconLiteral="mdi-code-greater-than" iconSize="38" selectionEnd="0" selectionStart="0" />
                      </graphic>
                   </Button>
-                  <Button contentDisplay="BOTTOM" minWidth="65.0" text="Path">
+                  <Button onAction="#openExplorer" contentDisplay="BOTTOM" minWidth="65.0" text="Path">
                      <graphic>
                         <FontIcon iconLiteral="mdi-folder-outline" iconSize="38" selectionEnd="0" selectionStart="0" />
                      </graphic>

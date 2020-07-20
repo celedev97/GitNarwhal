@@ -3,6 +3,7 @@ package com.gitnarwhal.views
 import com.gitnarwhal.backend.Commit
 import com.gitnarwhal.backend.Git
 import com.gitnarwhal.components.BranchButton
+import com.gitnarwhal.utils.OS
 import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.utils.save
 import javafx.scene.Parent
@@ -127,5 +128,9 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
         }
 
     }
+
+    fun openTerminal() = runAsync {  OS.TERMINAL.execute(path) }
+    fun openExplorer() = runAsync { (OS.EXPLORER + path).execute() }
+    fun openRemote() = runAsync { (OS.BROWSER + git.remoteUrl().output).execute() }
 
 }
