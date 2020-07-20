@@ -6,87 +6,82 @@
 <?import javafx.scene.control.ComboBox?>
 <?import javafx.scene.control.Spinner?>
 <?import javafx.scene.control.TextField?>
-<?import javafx.scene.effect.Bloom?>
+<?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.effect.Glow?>
 <?import javafx.scene.layout.ColumnConstraints?>
 <?import javafx.scene.layout.GridPane?>
-<?import javafx.scene.layout.Pane?>
+<?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.RowConstraints?>
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 <?import javafx.scene.text.Text?>
 
-<Pane fx:controller="com.gitnarwhal.components.AddCloneTab.CloneTab" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="400.0" prefWidth="600.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1">
+<VBox minWidth="300.0" prefWidth="750.0" spacing="4.0" xmlns="http://javafx.com/javafx/11.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.gitnarwhal.components.AddCloneTab.CloneTab">
    <children>
-      <VBox layoutX="30.0" layoutY="18.0" prefHeight="215.0" prefWidth="558.0">
+      <Text strokeType="OUTSIDE" strokeWidth="0.0" text="Clone" wrappingWidth="109.13671875">
+         <font>
+            <Font size="36.0" />
+         </font>
+      </Text>
+      <GridPane hgap="4.0" vgap="4.0">
+         <columnConstraints>
+            <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" prefWidth="100.0" />
+            <ColumnConstraints hgrow="NEVER" />
+         </columnConstraints>
+         <rowConstraints>
+            <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
+            <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
+            <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
+         </rowConstraints>
          <children>
-            <Text strokeType="OUTSIDE" strokeWidth="0.0" text="Clone" wrappingWidth="109.13671875">
-               <font>
-                  <Font size="36.0" />
-               </font>
-            </Text>
-            <GridPane hgap="10.0" vgap="10.0">
-              <columnConstraints>
-                <ColumnConstraints hgrow="SOMETIMES" maxWidth="435.0" minWidth="10.0" prefWidth="435.0" />
-                <ColumnConstraints hgrow="SOMETIMES" maxWidth="282.0" minWidth="10.0" prefWidth="139.0" />
-              </columnConstraints>
-              <rowConstraints>
-                <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
-                <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
-                <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
-                  <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
-              </rowConstraints>
+            <TextField fx:id="name" promptText="Name:" GridPane.rowIndex="2" />
+            <Button mnemonicParsing="false" prefWidth="97.0" text="Browse" GridPane.columnIndex="1">
+               <effect>
+                  <Glow />
+               </effect>
+            </Button>
+            <TextField prefHeight="25.0" prefWidth="458.0" promptText="Source Path / URL:" />
+            <TextField promptText="Destination Path:" GridPane.rowIndex="1" />
+            <Button mnemonicParsing="false" prefWidth="97.0" text="Browse" GridPane.columnIndex="1" GridPane.rowIndex="1">
+               <effect>
+                  <Glow />
+               </effect>
+            </Button>
+         </children>
+      </GridPane>
+      <TitledPane animated="false" text="Advanced Options" expanded="false">
+         <content>
+            <VBox spacing="10.0">
                <children>
-                  <TextField promptText="Destination Path:" GridPane.rowIndex="1" />
-                  <TextField promptText="Name:" GridPane.rowIndex="2" />
-                  <TextField prefHeight="50.0" prefWidth="435.0" promptText="Source Path / URL:" />
-                  <Button mnemonicParsing="false" prefHeight="30.0" prefWidth="97.0" text="Browse" GridPane.columnIndex="1">
-                     <effect>
-                        <Glow />
-                     </effect>
-                  </Button>
-                  <Button mnemonicParsing="false" prefHeight="30.0" prefWidth="97.0" text="Browse" GridPane.columnIndex="1" GridPane.rowIndex="1">
-                     <opaqueInsets>
-                        <Insets />
-                     </opaqueInsets>
-                     <effect>
-                        <Bloom />
-                     </effect>
-                  </Button>
-                  <VBox prefHeight="200.0" prefWidth="100.0" GridPane.rowIndex="3">
+                  <GridPane hgap="10.0" prefWidth="494.0">
+                    <columnConstraints>
+                      <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" prefWidth="100.0" />
+                      <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" prefWidth="100.0" />
+                    </columnConstraints>
+                    <rowConstraints>
+                      <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
+                      <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
+                    </rowConstraints>
                      <children>
-                        <Text strokeType="OUTSIDE" strokeWidth="0.0" text="Local folder:">
-                           <font>
-                              <Font size="15.0" />
-                           </font>
-                           <VBox.margin>
-                              <Insets top="10.0" />
-                           </VBox.margin>
-                        </Text>
-                        <ComboBox prefHeight="28.0" prefWidth="254.0" />
+                        <Text strokeType="OUTSIDE" strokeWidth="0.0" text="Chekout Branch" />
+                        <Text fx:id="cloneDepthSpinner" strokeType="OUTSIDE" strokeWidth="0.0" text="Clone Depth:" GridPane.columnIndex="1" />
+                        <Spinner editable="true" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                        <ComboBox prefHeight="25.0" prefWidth="500.0" GridPane.rowIndex="1" />
                      </children>
-                  </VBox>
+                  </GridPane>
+                  <HBox spacing="40.0">
+                     <children>
+                        <CheckBox mnemonicParsing="false" text="Recurse submodules" />
+                        <CheckBox mnemonicParsing="false" text="No Hardlinks" />
+                     </children>
+                  </HBox>
                </children>
-               <opaqueInsets>
-                  <Insets />
-               </opaqueInsets>
-               <VBox.margin>
-                  <Insets />
-               </VBox.margin>
-            </GridPane>
-         </children>
-      </VBox>
-      <Pane layoutX="30.0" layoutY="236.0" prefHeight="150.0" prefWidth="529.0">
-         <children>
-            <Text layoutY="53.0" strokeType="OUTSIDE" strokeWidth="0.0" text="Chekout Branch" />
-            <ComboBox layoutX="-2.0" layoutY="60.0" prefWidth="150.0" />
-            <Text layoutX="164.0" layoutY="52.0" strokeType="OUTSIDE" strokeWidth="0.0" text="Clone Depth:" />
-            <Spinner layoutX="164.0" layoutY="62.0" />
-            <CheckBox layoutX="327.0" layoutY="35.0" mnemonicParsing="false" text="Recurse submodules" />
-            <CheckBox layoutX="327.0" layoutY="62.0" mnemonicParsing="false" text="No Hardlinks" />
-            <Button onAction="#run" layoutX="-2.0" layoutY="104.0" mnemonicParsing="false" prefHeight="32.0" prefWidth="97.0" text="Clone" />
-            <CheckBox layoutY="1.0" mnemonicParsing="false" text="Advanced Options?" />
-         </children>
-      </Pane>
+            </VBox>
+         </content>
+      </TitledPane>
+      <Button mnemonicParsing="false" onAction="#run" prefHeight="32.0" prefWidth="97.0" text="Clone" />
    </children>
-</Pane>
+   <padding>
+      <Insets bottom="40.0" left="40.0" right="40.0" top="40.0" />
+   </padding>
+</VBox>
