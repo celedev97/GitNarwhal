@@ -35,14 +35,3 @@ fun Settings.save() {
         }
     }.start()
 }
-
-fun openTerminal() {
-    if(OS.CURRENT == OS.WINDOWS) {
-        Command("cmd").execute()
-    }
-    else {
-        // TODO: test this part
-        val term = Command("echo ${'$'}TERM").execute()
-        Command(term.output).execute()
-    }
-}
