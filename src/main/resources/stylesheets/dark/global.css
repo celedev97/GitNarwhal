@@ -77,6 +77,11 @@
     -fx-border-color: #ffeb3b;
 }
 
+/* SIDEBAR  */
+#sideBar.closed .arrow-button{
+    visibility: false;
+    -fx-pref-width: 0;
+}
 .branch-button{
     -fx-padding: 3 10;
     -fx-font-size: 16;
