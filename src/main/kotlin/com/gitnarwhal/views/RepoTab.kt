@@ -4,16 +4,10 @@ import com.gitnarwhal.backend.Commit
 import com.gitnarwhal.backend.Git
 import com.gitnarwhal.components.BranchButton
 import com.gitnarwhal.utils.OS
-import com.gitnarwhal.utils.Settings
-import com.gitnarwhal.utils.save
 import javafx.scene.Parent
-import javafx.scene.control.Tab
-import javafx.scene.control.TableView
+import javafx.scene.control.*
 import javafx.scene.layout.VBox
 import tornadofx.*
-import java.nio.file.Paths
-import java.util.*
-import kotlin.collections.HashMap
 
 class RepoTab(var path: String, tabName: String) : Fragment() {
     //region GUI components
@@ -29,6 +23,12 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
 
     val localBranchesBox:VBox by fxid()
     val remoteBranchesBox:VBox by fxid()
+
+    val sideBarOpenButton:Button by fxid()
+    val sideBarCloseButton:Button by fxid()
+
+    val sideBarSplit:SplitPane by fxid()
+    val sideBar:VBox by fxid()
     //endregion
 
     var git: Git
@@ -47,6 +47,8 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
         commitTable.column("Date",          Commit::date)
         commitTable.column("Author",        Commit::author)
         commitTable.column("Commit",        Commit::hash)
+
+        initSideBar()
 
         refresh()
     }
@@ -132,5 +134,80 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
     fun openTerminal() = runAsync {  OS.TERMINAL.execute(path) }
     fun openExplorer() = runAsync { (OS.EXPLORER + path).execute() }
     fun openRemote() = runAsync { (OS.BROWSER + git.remoteUrl().output).execute() }
+
+
+    //region Sidebar stuff
+    val sideBarPanesOpened = hashMapOf<TitledPane, Boolean>()
+
+    var previousSideBarWidth = 0.3;
+    var originalSideBarMaxWidth = 0.0;
+    var originalSideBarMinWidth = 0.0;
+
+    fun initSideBar(){
+        //adding listner that open the sidebar if a titledpane is opened with the sidebar closed
+        for(pane in sideBar.children.filterIsInstance<TitledPane>()){
+            pane.expandedProperty().addListener { _, _, newValue ->
+                if(newValue && sideBarOpenButton.isVisible){
+                    openSideBar()
+                    pane.isExpanded = true
+                }
+            }
+        }
+    }
+
+    fun openSideBar(){
+        if(!sideBarOpenButton.isVisible)
+            return;
+
+        sideBar.removeClass("closed")
+
+        //switching the buttons
+        sideBarOpenButton.hide()
+        sideBarCloseButton.show()
+        sideBarCloseButton.requestFocus()
+
+        //reopening old panes
+        sideBarPanesOpened.forEach { tab, expanded ->
+            tab.isExpanded = expanded
+        }
+
+        //opening sidebar
+        sideBar.minWidth = originalSideBarMinWidth
+        sideBar.maxWidth = originalSideBarMaxWidth
+        sideBarSplit.setDividerPosition(0,  previousSideBarWidth)
+    }
+    fun closeSideBar(){
+        if(!sideBarCloseButton.isVisible)
+            return;
+
+        sideBar.addClass("closed")
+
+        //switching the buttons
+        sideBarCloseButton.hide()
+        sideBarOpenButton.show()
+        sideBarOpenButton.requestFocus()
+
+        //saving last opened panes
+        sideBar.children.filterIsInstance<TitledPane>().forEach {
+            sideBarPanesOpened[it] = it.isExpanded
+        }
+
+        //saving sidebar data
+        previousSideBarWidth = sideBarSplit.dividerPositions[0]
+        originalSideBarMinWidth = sideBar.minWidth
+        originalSideBarMaxWidth = sideBar.maxWidth
+
+        //closing all the panes
+        sideBarPanesOpened.keys.forEach {
+            it.isExpanded = false
+        }
+
+        //closing sidebar
+        sideBar.minWidth = sideBarOpenButton.width
+        sideBar.maxWidth = sideBarOpenButton.width
+    }
+    //endregion
+
+
 
 }
