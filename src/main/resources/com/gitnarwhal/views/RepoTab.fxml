@@ -92,17 +92,17 @@
          <right>
             <HBox prefHeight="100.0" prefWidth="200.0" BorderPane.alignment="CENTER">
                <children>
-                  <Button onAction="#openRemote" contentDisplay="BOTTOM" minWidth="65.0" text="Remote">
+                  <Button contentDisplay="BOTTOM" minWidth="65.0" onAction="#openRemote" text="Remote">
                      <graphic>
                         <FontIcon iconLiteral="mdi-earth" iconSize="38" selectionEnd="0" selectionStart="0" />
                      </graphic>
                   </Button>
-                  <Button onAction="#openTerminal" contentDisplay="BOTTOM" minWidth="65.0" text="Terminal">
+                  <Button contentDisplay="BOTTOM" minWidth="65.0" onAction="#openTerminal" text="Terminal">
                      <graphic>
                         <FontIcon iconLiteral="mdi-code-greater-than" iconSize="38" selectionEnd="0" selectionStart="0" />
                      </graphic>
                   </Button>
-                  <Button onAction="#openExplorer" contentDisplay="BOTTOM" minWidth="65.0" text="Path">
+                  <Button contentDisplay="BOTTOM" minWidth="65.0" onAction="#openExplorer" text="Path">
                      <graphic>
                         <FontIcon iconLiteral="mdi-folder-outline" iconSize="38" selectionEnd="0" selectionStart="0" />
                      </graphic>
@@ -116,39 +116,53 @@
             </HBox>
          </right>
       </BorderPane>
-      <SplitPane dividerPositions="0.20483749055177627" prefHeight="160.0" prefWidth="200.0" VBox.vgrow="ALWAYS">
+      <SplitPane fx:id="sideBarSplit" dividerPositions="0.17838246409674982" prefHeight="160.0" prefWidth="200.0" VBox.vgrow="ALWAYS">
         <items>
-            <VBox prefHeight="200.0" prefWidth="100.0" SplitPane.resizableWithParent="false">
+            <VBox id="sideBar" fx:id="sideBar">
                <children>
+                  <AnchorPane minWidth="-Infinity" prefHeight="35.0" prefWidth="0.0">
+                     <children>
+                        <Button fx:id="sideBarOpenButton" contentDisplay="BOTTOM" minHeight="-Infinity" minWidth="-Infinity" onAction="#openSideBar" prefHeight="35.0" prefWidth="36.0" visible="false" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.topAnchor="0.0">
+                           <graphic>
+                              <FontIcon iconLiteral="mdi-menu" iconSize="24" />
+                           </graphic>
+                        </Button>
+                        <Button fx:id="sideBarCloseButton" contentDisplay="BOTTOM" layoutX="236.0" minHeight="-Infinity" minWidth="-Infinity" onAction="#closeSideBar" prefHeight="35.0" prefWidth="36.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.topAnchor="0.0">
+                           <graphic>
+                              <FontIcon iconLiteral="mdi-backburger" iconSize="24" selectionEnd="0" selectionStart="0" />
+                           </graphic>
+                        </Button>
+                     </children>
+                  </AnchorPane>
                   <TitledPane animated="false" text="Local Branches">
+                     <content>
+                        <ScrollPane fitToWidth="true">
+                           <content>
+                              <VBox fx:id="localBranchesBox" />
+                           </content>
+                        </ScrollPane>
+                     </content>
                      <graphic>
                         <FontIcon iconLiteral="mdi-laptop" iconSize="24" />
                      </graphic>
+                  </TitledPane>
+                  <TitledPane animated="false" text="Local Branches">
                      <content>
-                        <ScrollPane prefHeight="150.0" prefWidth="200.0">
+                        <ScrollPane fitToWidth="true">
                            <content>
-                              <VBox fx:id="localBranchesBox" prefHeight="150.0" prefWidth="250.0" />
+                              <VBox fx:id="remoteBranchesBox" />
                            </content>
                         </ScrollPane>
                      </content>
-                  </TitledPane>
-                  <TitledPane animated="false" text="Remote Branches">
                      <graphic>
                         <FontIcon iconLiteral="mdi-cloud-outline" iconSize="24" />
                      </graphic>
-                     <content>
-                        <ScrollPane prefHeight="150.0" prefWidth="200.0">
-                           <content>
-                              <VBox fx:id="remoteBranchesBox" prefHeight="150.0" prefWidth="250.0" />
-                           </content>
-                        </ScrollPane>
-                     </content>
                   </TitledPane>
                </children>
             </VBox>
             <SplitPane dividerPositions="0.693516699410609" orientation="VERTICAL" prefHeight="200.0" prefWidth="160.0">
               <items>
-                  <TableView fx:id="commitTable" prefHeight="200.0" prefWidth="200.0" tableMenuButtonVisible="true">
+                  <TableView fx:id="commitTable" prefHeight="200.0" prefWidth="934.0" tableMenuButtonVisible="true">
                      <columnResizePolicy>
                         <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
                      </columnResizePolicy>
