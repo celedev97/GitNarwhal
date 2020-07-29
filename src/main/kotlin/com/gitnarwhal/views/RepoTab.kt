@@ -3,6 +3,7 @@ package com.gitnarwhal.views
 import com.gitnarwhal.backend.Commit
 import com.gitnarwhal.backend.Git
 import com.gitnarwhal.components.BranchButton
+import com.gitnarwhal.utils.CollapsibleTabPaneHelper.Companion.collapsible
 import com.gitnarwhal.utils.OS
 import javafx.scene.Parent
 import javafx.scene.control.*
@@ -29,6 +30,9 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
 
     val sideBarSplit:SplitPane by fxid()
     val sideBar:VBox by fxid()
+
+
+    val collapsible:TabPane by fxid()
     //endregion
 
     var git: Git
@@ -51,6 +55,8 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
         initSideBar()
 
         refresh()
+
+        collapsible.collapsible()
     }
 
     fun commit(){
