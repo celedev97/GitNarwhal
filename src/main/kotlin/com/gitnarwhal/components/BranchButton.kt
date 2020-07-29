@@ -9,9 +9,6 @@ import tornadofx.*
 class BranchButton(name:String ,repo:RepoTab, selected: Boolean = false) : Label(name) {
 
     var selected:Boolean = false
-        get(){
-            return field
-        }
         set(value){
             field = value
             if(field){
