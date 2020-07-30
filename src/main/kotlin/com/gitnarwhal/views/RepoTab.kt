@@ -47,26 +47,23 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
         tab.text = tabName
         this.git = Git(this.path)
 
-        var commitDataPanel = CommitDataPanel()
+        val commitDataPanel = CommitDataPanel()
         commitDataTab.content = commitDataPanel.root
 
         commitTable.columns.clear()
 
         commitTable.column("Graph",         Commit::graph).cellFormat {graphic = item}
         commitTable.column("Description",   Commit::title)
-        commitTable.column("Date",          Commit::date)
-        commitTable.column("Author",        Commit::author)
+        commitTable.column("Date",          Commit::committerDate)
+        commitTable.column("Committer",     Commit::committer)
         commitTable.column("Commit",        Commit::hash)
 
         commitTable.columns.forEach { it.isSortable = false }
 
-        commitTable.onSelectionChange {
-
-        }
 
         commitTable.onSelectionChange {
             if(it != null) {
-                commitDataPanel.getInfosFromHash(it.hash)
+                commitDataPanel.getInfosFromHash(it)
             }
         }
 
@@ -137,7 +134,7 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
             }
         }
 
-        commits.values.sortedBy { -it.date.toInt() }.forEach {
+        commits.values.sortedBy { -it.committerDate.toInt() }.forEach {
             dfs(it)
         }
         //endregion
@@ -150,7 +147,7 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
     }
 
     fun refreshBranches() {
-        var gitBranches = git.branches()
+        val gitBranches = git.branches()
         if(!gitBranches.success)
             return
 
@@ -185,14 +182,14 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
 
 
     //region Sidebar stuff
-    val sideBarPanesOpened = hashMapOf<TitledPane, Boolean>()
+    private val sideBarPanesOpened = hashMapOf<TitledPane, Boolean>()
 
-    var previousSideBarWidth = 0.3;
-    var originalSideBarMaxWidth = 0.0;
-    var originalSideBarMinWidth = 0.0;
+    private var previousSideBarWidth = 0.3;
+    private var originalSideBarMaxWidth = 0.0;
+    private var originalSideBarMinWidth = 0.0;
 
-    fun initSideBar(){
-        //adding listner that open the sidebar if a titledpane is opened with the sidebar closed
+    private fun initSideBar(){
+        //adding listener that open the sidebar if a titledPane is opened with the sidebar closed
         for(pane in sideBar.children.filterIsInstance<TitledPane>()){
             pane.expandedProperty().addListener { _, _, newValue ->
                 if(newValue && sideBarOpenButton.isVisible){
