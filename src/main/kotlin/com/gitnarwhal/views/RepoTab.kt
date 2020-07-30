@@ -52,6 +52,12 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
         commitTable.column("Author",        Commit::author)
         commitTable.column("Commit",        Commit::hash)
 
+        commitTable.columns.forEach { it.isSortable = false }
+
+        commitTable.onSelectionChange {
+
+        }
+
         initSideBar()
 
         refresh()
@@ -80,7 +86,9 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
             return
 
         commitTable.items.clear()
-        var commits = hashMapOf<String,Commit>()
+
+        //region Getting commits base structure
+        val commits = hashMapOf<String,Commit>()
         for (hashes in log.output.lines().map { it.replace("".toRegex(),"").trim().split(" ") }){
             //creating commits for hashes found if they doesn't exists
             hashes.forEach {
@@ -100,9 +108,29 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
 
             //TODO: commit.column = helpmeplease
         }
+        //endregion
 
-        commits.forEach{ (_, commit) ->
-            commitTable.items.add(commit)
+        //region Assigning y coordinate to commits based on dfs and date
+        var y = 0
+        fun dfs(commit: Commit){
+            if (!commit.explored){
+                commit.explored = true;
+                commit.childs.forEach { child ->
+                    dfs(child)
+                }
+                commit.y = y
+                y++
+            }
+        }
+
+        commits.values.sortedBy { -it.date.toInt() }.forEach {
+            dfs(it)
+        }
+        //endregion
+
+        //Drawing commits... ?
+        commits.values.sortedBy { it.y }.forEach{
+            commitTable.items.add(it)
         }
 
     }

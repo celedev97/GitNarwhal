@@ -14,10 +14,13 @@ import tornadofx.hbox
 import java.lang.Exception
 import kotlin.reflect.KProperty
 
-class Commit(hash:String, val repoTab: RepoTab){
-    var hash      :String = hash
+class Commit(var hash: String, val repoTab: RepoTab){
+    //data for drawing commit
+    var explored: Boolean = false
+    var y = -1;
+    var x = -1;
 
-    val show = GitShow()
+    private val show = GitShow()
 
     var title by show
     var date by show
@@ -38,7 +41,7 @@ class Commit(hash:String, val repoTab: RepoTab){
 }
 
 open class GitShow(){
-    operator fun getValue(commit: Commit, property: KProperty<*>): Any {
+    operator fun getValue(commit: Commit, property: KProperty<*>): String {
         if(commit.data == null) {
             with(commit.repoTab.git.show(commit)) {
                 if (!success)
