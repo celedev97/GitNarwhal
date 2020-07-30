@@ -35,10 +35,11 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
 
     val collapsible:TabPane by fxid()
 
-    val commitDataTab:Tab by fxid()
+    val commitDataTab:Parent by fxid()
     //endregion
 
     var git: Git
+    private var commits: HashMap<String, Commit> = hashMapOf()
     //endregion
 
 
@@ -47,8 +48,8 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
         tab.text = tabName
         this.git = Git(this.path)
 
-        val commitDataPanel = CommitDataPanel()
-        commitDataTab.content = commitDataPanel.root
+        val commitDataPanel = CommitDataPanel(this)
+        commitDataTab.addChildIfPossible(commitDataPanel.root)
 
         commitTable.columns.clear()
 
@@ -97,9 +98,9 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
             return
 
         commitTable.items.clear()
+        commits.clear()
 
         //region Getting commits base structure
-        val commits = hashMapOf<String,Commit>()
         for (hashes in log.output.lines().map { it.replace("".toRegex(),"").trim().split(" ") }){
             //creating commits for hashes found if they doesn't exists
             hashes.forEach {
@@ -250,6 +251,10 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
         //closing sidebar
         sideBar.minWidth = sideBarOpenButton.width
         sideBar.maxWidth = sideBarOpenButton.width
+    }
+
+    fun selectCommit(hash: String) {
+        commitTable.selectionModel.select(commits[hash])
     }
     //endregion
 
