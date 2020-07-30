@@ -1,34 +1,16 @@
-package com.gitnarwhal.views
+package com.gitnarwhal.components
 
 
-import com.gitnarwhal.backend.Git
 import com.gitnarwhal.utils.Command
-import com.gitnarwhal.utils.Settings
-import com.gitnarwhal.utils.save
-import com.gitnarwhal.utils.toPath
-import javafx.collections.ListChangeListener
-import javafx.collections.ObservableList
-import javafx.scene.Parent
-import javafx.scene.control.Tab
-import javafx.scene.control.TabPane
-import javafx.scene.control.skin.TabPaneSkin
-import org.json.JSONObject
+import javafx.scene.control.TextArea
 import tornadofx.*
 import java.lang.Exception
-import java.nio.file.Files
-import java.nio.file.Path
 import java.util.*
 
 class CommitDataPanel : Fragment() {
-    override val root:Parent by fxml(null as String?, true)
-    val tabPane :TabPane by fxid()
+    override val root: TextArea by fxml(null as String?, true)
 
     fun getInfosFromHash(hash:String): String {
-        // check if we are missing to pass something to the function
-        if(hash.equals("")) {
-            throw Exception("Hash cant be null!")
-        }
-
         // *** NOTES ON GIT FORMAT ***
         // Commit, short commit, short parents, author name, autor email, author date,
         // commit date, committer name,commit message
@@ -57,6 +39,8 @@ class CommitDataPanel : Fragment() {
                 "Committer: " + parsedResponse[6]
 
         print("[DEBUG][getInfosFromHash]:" + bigFinalString)
+
+        root.text = bigFinalString
 
         return bigFinalString
     }

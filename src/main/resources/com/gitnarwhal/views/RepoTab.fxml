@@ -11,7 +11,6 @@
 <?import javafx.scene.control.Tab?>
 <?import javafx.scene.control.TabPane?>
 <?import javafx.scene.control.TableView?>
-<?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TitledPane?>
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.layout.BorderPane?>
@@ -191,14 +190,7 @@
                   </TableView>
                   <TabPane fx:id="collapsible" prefHeight="0.0" prefWidth="1084.0" side="BOTTOM" tabClosingPolicy="UNAVAILABLE">
                      <tabs>
-                        <Tab text="Commit Data">
-                          <content>
-                            <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0">
-                                 <children>
-                                    <TextArea editable="false" layoutX="14.0" layoutY="14.0" prefHeight="200.0" prefWidth="1058.0" />
-                                 </children></AnchorPane>
-                          </content>
-                        </Tab>
+                        <Tab fx:id="commitDataTab" text="Commit Data" />
                         <Tab text="Command output">
                            <content>
                               <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0" />

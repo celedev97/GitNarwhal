@@ -3,6 +3,7 @@ package com.gitnarwhal.views
 import com.gitnarwhal.backend.Commit
 import com.gitnarwhal.backend.Git
 import com.gitnarwhal.components.BranchButton
+import com.gitnarwhal.components.CommitDataPanel
 import com.gitnarwhal.utils.CollapsibleTabPaneHelper.Companion.collapsible
 import com.gitnarwhal.utils.OS
 import javafx.scene.Parent
@@ -33,6 +34,8 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
 
 
     val collapsible:TabPane by fxid()
+
+    val commitDataTab:Tab by fxid()
     //endregion
 
     var git: Git
@@ -43,6 +46,9 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
     init {
         tab.text = tabName
         this.git = Git(this.path)
+
+        var commitDataPanel = CommitDataPanel()
+        commitDataTab.content = commitDataPanel.root
 
         commitTable.columns.clear()
 
@@ -57,6 +63,14 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
         commitTable.onSelectionChange {
 
         }
+
+        commitTable.onSelectionChange {
+            if(it != null) {
+                commitDataPanel.getInfosFromHash(it.hash)
+            }
+        }
+
+
 
         initSideBar()
 
