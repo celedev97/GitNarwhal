@@ -15,16 +15,27 @@ import java.lang.Exception
 import kotlin.reflect.KProperty
 
 class Commit(var hash: String, val repoTab: RepoTab){
+
     //data for drawing commit
     var explored: Boolean = false
     var y = -1;
     var x = -1;
 
+    //region Git show parameters
     private val show = GitShow()
 
-    var title by show
-    var date by show
-    var author by show
+    val shortHash       by show
+
+    var author          by show
+    var authorDate      by show
+
+    var committer       by show
+    var committerDate   by show
+
+    var title           by show
+
+    val message         by show
+    //endregion
 
     val childs = arrayListOf<Commit>()
     val parents = arrayListOf<Commit>()
@@ -37,26 +48,40 @@ class Commit(var hash: String, val repoTab: RepoTab){
         node
     }
 
-    var data: List<String>? = null
+    override fun toString(): String {
+        return hash
+    }
 }
 
 open class GitShow(){
+    var commitShowData: List<String>? = null
+
+    val linePositions = arrayOf(
+            "shortHash",
+
+            "author",
+            "authorDate",
+
+            "committer",
+            "committerDate",
+
+            "title"
+    )
+
     operator fun getValue(commit: Commit, property: KProperty<*>): String {
-        if(commit.data == null) {
+        if(commitShowData == null) {
             with(commit.repoTab.git.show(commit)) {
                 if (!success)
                     throw Exception("can't get data for commit: ${commit.hash}")
-                commit.data = output.lines()
+                commitShowData = output.lines()
             }
         }
-
-        with(commit.data!!){
-            return when(property.name) {
-                "author" -> this[0]
-                "date" ->   this[1]
-                "title" ->  this[2]
-                else -> throw Exception("Don't know how to parse property: ${property.name}")
-            }
+        return if(property.name == "message"){
+            commitShowData!!
+                    .filterIndexed { index, _ -> index >= linePositions.count() }
+                    .joinToString("\n")
+        }else{
+            commitShowData!![linePositions.indexOf(property.name)]
         }
     }
 

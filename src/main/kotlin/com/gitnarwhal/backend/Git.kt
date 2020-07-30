@@ -56,8 +56,13 @@ class Git(val repo: String) {
 
     fun log() = git("--no-pager", "log", "--pretty=format:%H %P")
 
+    // Commit, short commit, short parents, author name, autor email, author date, commit date, committer name,commit message
+    // flags: %H, %h, %p, %an, %ae, %ad, %cn, %s   "%H%n%h%n%cN <%cE>%n%cd%n%s"
     fun show(commit:Commit) = show(commit.hash)
-    fun show(commitHash:String) = git("--no-pager", "show", commitHash ,"-s", "--pretty=format:%cN <%cE>%n%cd%n%s", "--date=unix")
+    fun show(commitHash:String) =
+            git("--no-pager", "show", commitHash ,"-s",
+            "--pretty=format:"+arrayOf("%h", "%aN <%aE>", "%ad", "%cN <%cE>", "%cd", "%s","%b").joinToString("%n"),
+            "--date=unix")
 
     fun remoteUrl(remote: String = "origin") = git("config", "--get", "remote.$remote.url")
 
