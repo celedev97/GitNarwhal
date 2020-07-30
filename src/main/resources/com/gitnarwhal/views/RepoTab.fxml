@@ -190,7 +190,11 @@
                   </TableView>
                   <TabPane fx:id="collapsible" prefHeight="0.0" prefWidth="1084.0" side="BOTTOM" tabClosingPolicy="UNAVAILABLE">
                      <tabs>
-                        <Tab fx:id="commitDataTab" text="Commit Data" />
+                        <Tab text="Commit Data">
+                           <ScrollPane fx:id="commitDataTab">
+
+                           </ScrollPane>
+                        </Tab>
                         <Tab text="Command output">
                            <content>
                               <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0" />
