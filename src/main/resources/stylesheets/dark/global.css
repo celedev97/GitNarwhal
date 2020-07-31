@@ -1,6 +1,6 @@
 /*region MainView*/
 /*MENU BAR*/
-.menu-bar{
+.menu-bar, .menu-item, .context-menu{
     -fx-background-color:  #263238;
 }
 .menu-bar .label{
