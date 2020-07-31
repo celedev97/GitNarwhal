@@ -12,10 +12,14 @@ import tornadofx.View
 import tornadofx.add
 import tornadofx.hbox
 import java.lang.Exception
+import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.*
 import kotlin.reflect.KProperty
 
 class Commit(var hash: String, val repoTab: RepoTab){
-
     //data for drawing commit
     var explored: Boolean = false
     var y = -1;
@@ -31,6 +35,7 @@ class Commit(var hash: String, val repoTab: RepoTab){
 
     var committer       by show
     var committerDate   by show
+    val committerTimeStamp by show
 
     var title           by show
 
@@ -56,16 +61,16 @@ class Commit(var hash: String, val repoTab: RepoTab){
 open class GitShow(){
     var commitShowData: List<String>? = null
 
-    val linePositions = arrayOf(
-            "shortHash",
+    val linePositions = hashMapOf<String, Int>(
+            "shortHash" to 0,
 
-            "author",
-            "authorDate",
+            "author" to 1,
+            "authorDate" to 2,
 
-            "committer",
-            "committerDate",
+            "committer" to 3,
+            "committerDate" to 4, "committerTimeStamp" to 4,
 
-            "title"
+            "title" to 5
     )
 
     operator fun getValue(commit: Commit, property: KProperty<*>): String {
@@ -76,12 +81,17 @@ open class GitShow(){
                 commitShowData = output.lines()
             }
         }
-        return if(property.name == "message"){
-            commitShowData!!
+        if(property.name == "message"){
+            return  commitShowData!!
                     .filterIndexed { index, _ -> index >= linePositions.count() }
                     .joinToString("\n")
         }else{
-            commitShowData!![linePositions.indexOf(property.name)]
+            var output = commitShowData!![linePositions[property.name]!!]
+            if(property.name.contains("Date")){
+                val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                output = formatter.format(Date.from(Instant.ofEpochSecond(output.toLong())))
+            }
+            return output
         }
     }
 

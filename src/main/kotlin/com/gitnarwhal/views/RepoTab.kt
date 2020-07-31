@@ -135,7 +135,7 @@ class RepoTab(var path: String, tabName: String) : Fragment() {
             }
         }
 
-        commits.values.sortedBy { -it.committerDate.toInt() }.forEach {
+        commits.values.sortedBy { -it.committerTimeStamp.toInt() }.forEach {
             dfs(it)
         }
         //endregion
