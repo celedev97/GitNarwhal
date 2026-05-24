@@ -90,7 +90,88 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             }
         }
 
+        installCommitContextMenu()
+
         refresh()
+    }
+
+    private fun installCommitContextMenu() {
+        commitTable.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mousePressed(e: java.awt.event.MouseEvent)  = maybeShow(e)
+            override fun mouseReleased(e: java.awt.event.MouseEvent) = maybeShow(e)
+            private fun maybeShow(e: java.awt.event.MouseEvent) {
+                if (!e.isPopupTrigger) return
+                val row = commitTable.rowAtPoint(e.point)
+                if (row < 0) return
+                commitTable.selectionModel.setSelectionInterval(row, row)
+                val commit = commitList[row]
+                buildCommitPopup(commit).show(e.component, e.x, e.y)
+            }
+        })
+    }
+
+    private fun buildCommitPopup(commit: com.gitnarwhal.backend.Commit): JPopupMenu {
+        val menu = JPopupMenu(commit.shortHash)
+        menu.add(menuItem("Copy hash")        { copyToClipboard(commit.hash) })
+        menu.add(menuItem("Copy short hash")  { copyToClipboard(commit.shortHash) })
+        menu.addSeparator()
+        menu.add(menuItem("Create branch from this…") {
+            val name = JOptionPane.showInputDialog(this, "New branch name:", "Create branch", JOptionPane.QUESTION_MESSAGE)
+                ?.takeIf { it.isNotBlank() } ?: return@menuItem
+            val r = git.createBranchFrom(name, commit.hash)
+            if (!r.success) JOptionPane.showMessageDialog(this, r.output, "Create branch failed", JOptionPane.ERROR_MESSAGE)
+            refresh()
+        })
+        menu.addSeparator()
+        menu.add(menuItem("Cherry-pick") {
+            if (confirm("Cherry-pick ${commit.shortHash}?")) {
+                val r = git.cherryPick(commit.hash)
+                if (!r.success) JOptionPane.showMessageDialog(this, r.output, "Cherry-pick failed", JOptionPane.ERROR_MESSAGE)
+                refresh()
+            }
+        })
+        menu.add(menuItem("Revert") {
+            if (confirm("Revert ${commit.shortHash}? (creates a new commit)")) {
+                val r = git.revert(commit.hash)
+                if (!r.success) JOptionPane.showMessageDialog(this, r.output, "Revert failed", JOptionPane.ERROR_MESSAGE)
+                refresh()
+            }
+        })
+        menu.addSeparator()
+        val resetMenu = javax.swing.JMenu("Reset current branch to here")
+        resetMenu.add(menuItem("Soft (keep index + working tree)") {
+            if (confirm("git reset --soft ${commit.shortHash}?")) {
+                val r = git.reset(commit.hash, "soft"); if (!r.success) JOptionPane.showMessageDialog(this, r.output, "Reset failed", JOptionPane.ERROR_MESSAGE)
+                refresh()
+            }
+        })
+        resetMenu.add(menuItem("Mixed (default; unstage changes)") {
+            if (confirm("git reset --mixed ${commit.shortHash}?")) {
+                val r = git.reset(commit.hash, "mixed"); if (!r.success) JOptionPane.showMessageDialog(this, r.output, "Reset failed", JOptionPane.ERROR_MESSAGE)
+                refresh()
+            }
+        })
+        resetMenu.add(menuItem("Hard (DISCARD changes — destructive!)") {
+            if (confirm("DESTRUCTIVE: git reset --hard ${commit.shortHash}\n\nAll uncommitted changes will be lost. Continue?")) {
+                val r = git.reset(commit.hash, "hard"); if (!r.success) JOptionPane.showMessageDialog(this, r.output, "Reset failed", JOptionPane.ERROR_MESSAGE)
+                refresh()
+            }
+        })
+        menu.add(resetMenu)
+        return menu
+    }
+
+    private fun menuItem(text: String, action: () -> Unit) =
+        javax.swing.JMenuItem(text).apply { addActionListener { action() } }
+
+    private fun confirm(message: String): Boolean =
+        JOptionPane.showConfirmDialog(this, message, "Confirm",
+            JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE) == JOptionPane.OK_OPTION
+
+    private fun copyToClipboard(text: String) {
+        java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
+            java.awt.datatransfer.StringSelection(text), null
+        )
     }
 
     //region Toolbar
