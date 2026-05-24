@@ -83,6 +83,47 @@ class MainViewSmokeTest {
     }
 
     @Test
+    fun `RepoTab opens this repo and screenshots`() {
+        Assumptions.assumeFalse(GraphicsEnvironment.isHeadless(),
+            "Headless environment — skipping headed smoke test")
+
+        ThemeService.registerDefaultsSource()
+        ThemeService.applyFromSettings()
+
+        // Use the current working directory — Gradle runs tests with cwd = project root
+        val repoPath = File(".").absoluteFile.parentFile?.absolutePath ?: "."
+
+        var frame: JFrame? = null
+        var repo: com.gitnarwhal.views.RepoTab? = null
+        SwingUtilities.invokeAndWait {
+            repo = com.gitnarwhal.views.RepoTab(repoPath, "GitNarwhal")
+            frame = JFrame("GitNarwhal — RepoTab smoke").apply {
+                defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
+                contentPane = repo
+                size = Dimension(1400, 900)
+                setLocationRelativeTo(null)
+                isAlwaysOnTop = true
+                isVisible = true
+                toFront()
+                requestFocus()
+            }
+        }
+        SwingUtilities.invokeAndWait { /* flush */ }
+        Thread.sleep(1500)
+
+        try {
+            val outDir = File("build/screenshots").apply { mkdirs() }
+            val outFile = File(outDir, "repo-tab.png")
+            val img = Robot().createScreenCapture(frame!!.bounds)
+            ImageIO.write(img, "png", outFile)
+            assertTrue(outFile.exists() && outFile.length() > 0,
+                "Screenshot not produced at ${outFile.absolutePath}")
+        } finally {
+            SwingUtilities.invokeAndWait { frame?.dispose() }
+        }
+    }
+
+    @Test
     fun `AddCloneTab card switching works`() {
         Assumptions.assumeFalse(GraphicsEnvironment.isHeadless(),
             "Headless environment — skipping headed smoke test")
