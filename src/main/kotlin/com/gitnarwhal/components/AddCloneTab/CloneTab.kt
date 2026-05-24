@@ -1,6 +1,7 @@
 package com.gitnarwhal.components.AddCloneTab
 
 import com.gitnarwhal.backend.Git
+import com.gitnarwhal.components.ProgressDialog
 import com.gitnarwhal.utils.toPath
 import com.gitnarwhal.views.AddCloneTab
 import com.gitnarwhal.views.RepoTab
@@ -9,6 +10,8 @@ import java.awt.GridBagLayout
 import java.awt.Insets
 import java.io.File
 import javax.swing.*
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
 
 class CloneTab(private val addCloneTab: AddCloneTab) : JPanel(GridBagLayout()) {
 
@@ -51,13 +54,12 @@ class CloneTab(private val addCloneTab: AddCloneTab) : JPanel(GridBagLayout()) {
         runBtn.addActionListener { run() }
         add(runBtn, gbc)
 
-        // filler row pushes the form to the top instead of being centered
+        // filler row — keeps the form top-anchored
         gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 3
         gbc.weighty = 1.0; gbc.fill = GridBagConstraints.BOTH
         add(JPanel().apply { isOpaque = false }, gbc)
         gbc.weighty = 0.0; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.gridwidth = 1
 
-        // auto-fill name + dest folder from URL on edit
         urlField.document.addDocumentListener(SimpleDocListener {
             val derived = deriveNameFromUrl(urlField.text)
             if (derived.isNotEmpty() && nameField.text.isBlank()) nameField.text = derived
@@ -79,7 +81,7 @@ class CloneTab(private val addCloneTab: AddCloneTab) : JPanel(GridBagLayout()) {
         val dest = destField.text.trim()
         val name = nameField.text.trim().ifBlank { deriveNameFromUrl(url) }
 
-        if (url.isBlank()) { error("URL is required"); return }
+        if (url.isBlank())  { error("URL is required"); return }
         if (dest.isBlank()) { error("Destination is required"); return }
         if (name.isBlank()) { error("Could not derive a repo name from URL — fill it in manually"); return }
 
@@ -94,9 +96,10 @@ class CloneTab(private val addCloneTab: AddCloneTab) : JPanel(GridBagLayout()) {
                 return cmd.success to cmd.output
             }
             override fun done() {
-                dialog.dispose()
                 runBtn.isEnabled = true
-                val (success, output) = try { get() } catch (e: Exception) { false to (e.message ?: "unknown error") }
+                val (success, output) = try { get() }
+                    catch (e: Exception) { false to (e.message ?: "unknown error") }
+                dialog.finish(output, success)
                 if (success) {
                     with(addCloneTab.mainView) {
                         val repo = RepoTab(destPath, name)
@@ -104,13 +107,11 @@ class CloneTab(private val addCloneTab: AddCloneTab) : JPanel(GridBagLayout()) {
                         selectTab(repo)
                         closeTab(addCloneTab)
                     }
-                } else {
-                    error("Clone failed:\n\n$output")
                 }
             }
         }
         worker.execute()
-        dialog.isVisible = true   // modal — blocks until dispose()
+        dialog.isVisible = true   // modal
     }
 
     private fun error(message: String) {
@@ -118,26 +119,8 @@ class CloneTab(private val addCloneTab: AddCloneTab) : JPanel(GridBagLayout()) {
     }
 }
 
-/** Small indeterminate-progress modal used while a long-running git op runs. */
-internal class ProgressDialog(parent: java.awt.Window?, title: String) :
-    JDialog(parent, title, ModalityType.APPLICATION_MODAL) {
-    init {
-        defaultCloseOperation = DO_NOTHING_ON_CLOSE
-        val bar = JProgressBar().apply { isIndeterminate = true }
-        val label = JLabel(title).apply { border = BorderFactory.createEmptyBorder(12, 16, 8, 16) }
-        contentPane = JPanel(java.awt.BorderLayout()).also {
-            it.add(label, java.awt.BorderLayout.NORTH)
-            it.add(bar,   java.awt.BorderLayout.CENTER)
-            it.border = BorderFactory.createEmptyBorder(8, 8, 16, 8)
-        }
-        pack()
-        size = java.awt.Dimension(420, size.height)
-        setLocationRelativeTo(parent)
-    }
-}
-
-internal class SimpleDocListener(private val onChange: () -> Unit) : javax.swing.event.DocumentListener {
-    override fun insertUpdate(e: javax.swing.event.DocumentEvent?)  = onChange()
-    override fun removeUpdate(e: javax.swing.event.DocumentEvent?)  = onChange()
-    override fun changedUpdate(e: javax.swing.event.DocumentEvent?) = onChange()
+internal class SimpleDocListener(private val onChange: () -> Unit) : DocumentListener {
+    override fun insertUpdate(e: DocumentEvent?)  = onChange()
+    override fun removeUpdate(e: DocumentEvent?)  = onChange()
+    override fun changedUpdate(e: DocumentEvent?) = onChange()
 }
