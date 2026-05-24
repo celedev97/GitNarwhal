@@ -1,80 +1,91 @@
 package com.gitnarwhal.components
 
-
 import com.gitnarwhal.backend.Commit
-import com.gitnarwhal.utils.Command
 import com.gitnarwhal.views.RepoTab
-import javafx.scene.control.TextArea
-import javafx.scene.layout.VBox
-import tornadofx.*
-import java.lang.Exception
-import java.util.*
+import java.awt.Color
+import java.awt.Component
+import java.awt.Cursor
+import java.awt.Font
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import javax.swing.*
 
-class CommitDataPanel(val repo:RepoTab) : Fragment() {
-    override val root: VBox by fxml(null as String?, true)
+class CommitDataPanel(private val repo: RepoTab) : JPanel() {
 
     init {
-        root.spacing = 5.0
+        layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
     }
 
-    fun getInfosFromHash(commit: Commit) {
-        with(root){
-            children.clear()
+    fun showCommit(commit: Commit) {
+        removeAll()
 
-            //commit
-            textflow {
-                label("Commit: "){addClass("bold")}
-                label ("${commit.hash} [")
-                hyperlink(commit.shortHash){
-                    onLeftClick { repo.selectCommit(commit.hash) }
-                }
-                label("]")
-            }
+        add(row("Commit:", commit.hash + " [", hashLink(commit.hash, commit.shortHash), "]"))
 
-            //parents
-            textflow {
-                label("Parents: "){addClass("bold")}
-                commit.parents.forEach { parentCommit ->
-                    hyperlink(parentCommit.shortHash){
-                        onLeftClick { repo.selectCommit(parentCommit.hash) }
-                    }
-                }
-            }
-
-            //author
-            if(commit.committerDate != commit.authorDate) {
-                root.vbox {
-                    textflow {
-                        label("Author: ") { addClass("bold") }
-                        label(commit.author)
-                    }
-                    textflow {
-                        label("Author Date: ") { addClass("bold") }
-                        label(commit.authorDate)
-                    }
-                }
-            }
-
-            //committer
-            vbox {
-                textflow {
-                    label("Committer: "){addClass("bold")}
-                    label(commit.committer)
-                }
-                textflow {
-                    label("Committer Date: "){addClass("bold")}
-                    label(commit.committerDate)
-                }
-            }
-
-            //commit title and message
-            vbox {
-                spacing = root.spacing
-                label(commit.title){addClass("bold"); isWrapText = true}
-                label(commit.message){isWrapText = true}
-            }
-
+        val parentRow = JPanel().apply { layout = BoxLayout(this, BoxLayout.X_AXIS); alignmentX = LEFT_ALIGNMENT }
+        parentRow.add(bold("Parents: "))
+        commit.parents.forEach { parentCommit ->
+            parentRow.add(hashLink(parentCommit.hash, parentCommit.shortHash))
+            parentRow.add(JLabel(" "))
         }
+        add(parentRow)
+
+        if (commit.committerDate != commit.authorDate) {
+            add(row("Author:", commit.author))
+            add(row("Author Date:", commit.authorDate))
+        }
+
+        add(row("Committer:", commit.committer))
+        add(row("Committer Date:", commit.committerDate))
+
+        add(Box.createVerticalStrut(8))
+        add(wrappedLabel(commit.title, bold = true))
+        add(wrappedLabel(commit.message, bold = false))
+
+        revalidate()
+        repaint()
     }
 
+    private fun row(vararg parts: Any): JPanel {
+        val p = JPanel().apply { layout = BoxLayout(this, BoxLayout.X_AXIS); alignmentX = LEFT_ALIGNMENT }
+        parts.forEachIndexed { i, part ->
+            val comp: Component = when (part) {
+                is Component -> part
+                is String -> if (i == 0) bold(part + " ") else JLabel(part)
+                else -> JLabel(part.toString())
+            }
+            p.add(comp)
+        }
+        p.add(Box.createHorizontalGlue())
+        return p
+    }
+
+    private fun bold(text: String): JLabel = JLabel(text).apply {
+        font = font.deriveFont(Font.BOLD)
+    }
+
+    private fun hashLink(fullHash: String, label: String): JLabel {
+        val l = JLabel(label)
+        l.foreground = Color(0x4FC3F7)
+        l.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+        l.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                repo.selectCommit(fullHash)
+            }
+        })
+        return l
+    }
+
+    private fun wrappedLabel(text: String, bold: Boolean): JComponent {
+        val area = JTextArea(text).apply {
+            isEditable = false
+            lineWrap = true
+            wrapStyleWord = true
+            isOpaque = false
+            border = BorderFactory.createEmptyBorder(2, 0, 2, 0)
+            if (bold) font = font.deriveFont(Font.BOLD)
+        }
+        area.alignmentX = LEFT_ALIGNMENT
+        return area
+    }
 }
