@@ -100,6 +100,11 @@ shadowJar {
 }
 //endregion
 
+// application plugin's startScripts implicitly reads shadowJar output; declare it
+tasks.named('startScripts') { dependsOn tasks.named('shadowJar') }
+tasks.named('distTar')      { dependsOn tasks.named('shadowJar') }
+tasks.named('distZip')      { dependsOn tasks.named('shadowJar') }
+
 task bundle {
     dependsOn win64app
     dependsOn linux64app
