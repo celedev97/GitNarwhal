@@ -146,8 +146,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     //endregion
 
     fun commit() {
-        //TODO: open commit dialog and call `git commit -m`
-        println("COMMIT!!!: $path")
+        val owner = SwingUtilities.getWindowAncestor(this)
+        CommitDialog(owner, git, onSuccess = { refresh() }).isVisible = true
     }
 
     fun refresh() {
