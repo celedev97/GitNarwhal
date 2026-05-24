@@ -1,93 +1,80 @@
-import java.nio.file.CopyOption
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
 //region GLOBALS
 buildscript {
-    //dependencies versions/modules
-    ext.kotlin_version = "1.3.72"
-    ext.tornadofx_version = "1.7.20"
+    ext.kotlin_version = "2.1.0"
+    ext.flatlaf_version = "3.5.4"
+    ext.ikonli_version = "12.3.1"
 
     //JRE bundling
-    ext.jreVersion = "11"
-    ext.operatingSystems = ["windows/x64","linux/x64","mac/x64"] //adoptopenjdk API v3
-
-    //javaFX
-    ext.javafx_version = "11.0.2"
-    ext.javafx_modules = ['javafx-base', 'javafx-graphics', 'javafx-controls', 'javafx-fxml' ]
-    ext.javafx_platforms = ['win','linux','mac']
+    ext.jreVersion = "21"
+    ext.operatingSystems = [
+            "windows/x64", "windows/aarch64",
+            "linux/x64",   "linux/aarch64",
+            "mac/x64",     "mac/aarch64"
+    ]
 }
-
 //endregion
 
 //region PLUGINS / REPOSITORIES
 plugins {
-    //basic things
     id "application"
-    id "org.jetbrains.kotlin.jvm" version "$kotlin_version"
-
-    //JAR plugin
-    id 'com.github.johnrengelman.shadow' version '6.0.0'
-
-    //JRE bundling plugins
-    id 'edu.sc.seis.launch4j' version '2.4.6'
-    id "nebula.ospackage" version "8.4.1"
-    id "edu.sc.seis.macAppBundle" version "2.3.0"
-
+    id "org.jetbrains.kotlin.jvm" version "2.1.0"
+    id "com.gradleup.shadow"      version "8.3.5"
 }
 
 repositories {
-    mavenLocal()
     mavenCentral()
-    jcenter()
-    maven {
-        url "https://oss.sonatype.org/content/repositories/snapshots/"
-    }
 }
 //endregion
 
 apply plugin: JREPackager
 
 mainClassName = "com.gitnarwhal.MainKt"
-version = "0.0.1"
+version = "0.0.2"
 
 jrePackager{
     jreVersion = project.ext.get("jreVersion")
     replaceInnoSetupVersion = project.version
 }
 
-
-//region COMPILATION/DEPENDENCIES
-compileKotlin.kotlinOptions.jvmTarget = jreVersion.toInteger()>8 ? jreVersion : "1.$jreVersion"
-
-def javafx_dependencies_per_platform = javafx_platforms.collectEntries{ platform->
-    [(platform) : (javafx_modules.collect{ module ->
-        "org.openjfx:$module:$javafx_version:$platform"
-    })]
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
 }
 
+kotlin {
+    jvmToolchain(21)
+}
+
+//region DEPENDENCIES
 dependencies {
     //kotlin
-    implementation group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib',    version: kotlin_version
-    implementation group: 'org.jetbrains.kotlin', name: 'kotlin-reflect',   version: kotlin_version
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    implementation "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
 
-    //tornadoFX
-    implementation group: 'no.tornado', name: 'tornadofx', version: tornadofx_version
+    //FlatLaf — modern Swing look & feel
+    implementation "com.formdev:flatlaf:$flatlaf_version"
+    implementation "com.formdev:flatlaf-extras:$flatlaf_version"
+    implementation "com.formdev:flatlaf-intellij-themes:$flatlaf_version"
 
-    //ikonli
-    implementation group: 'org.kordamp.ikonli', name: 'ikonli-javafx',                 version: '11.5.0'
-    implementation group: 'org.kordamp.ikonli', name: 'ikonli-materialdesign-pack',    version: '11.5.0'
+    //ikonli (Swing)
+    implementation "org.kordamp.ikonli:ikonli-swing:$ikonli_version"
+    implementation "org.kordamp.ikonli:ikonli-materialdesign-pack:$ikonli_version"
 
     //json
-    implementation group: 'org.json', name: 'json', version: '20200518'
+    implementation "org.json:json:20240303"
 
+    //tests
+    testImplementation "org.jetbrains.kotlin:kotlin-test:$kotlin_version"
+    testImplementation "org.junit.jupiter:junit-jupiter:5.11.3"
+    testRuntimeOnly    "org.junit.platform:junit-platform-launcher"
+}
 
-
-    javafx_dependencies_per_platform.each { platform, deps ->
-        deps.each { dependency ->
-            implementation(dependency)
-        }
-    }
+test {
+    useJUnitPlatform()
 }
 //endregion
 
@@ -128,7 +115,7 @@ task release{
 //TODO: CHANGE TASKS TO INCREMENTAL TASKS
 //TODO: TOO MUCH HARDCODED STUFF, DEFINE VARIABLES FOR RELEASES
 class JREPackagerExtension{
-    String jreVersion = '13'
+    String jreVersion = '21'
     String innoSetupFile = "/gradle/innosetup/inno.iss"
     String iconFile = "/gradle/innosetup/icon.ico"
     String replaceInnoSetupVersion = null
@@ -189,17 +176,14 @@ class JREPackager implements Plugin<Project> {
         def win64installer = project.task("win64installer") {
             dependsOn win64app
             doLast {
-                //creating a build dir for the inno setup
                 def innoDirPath = project.buildDir.absolutePath + "/innosetup"
                 Files.createDirectories(new File(project.buildDir.absolutePath + "/innosetup").toPath())
 
-                //copy the bundled output
                 project.copy{
                     from project.buildDir.absolutePath + "/app/windows_x64"
                     into innoDirPath
                 }
 
-                //copy inno setup
                 def innoFilePath = innoDirPath + "/inno.iss"
                 Files.copy(
                         new File((project.projectDir.absolutePath + "/" + conf.innoSetupFile).replace("//","/")).toPath(),
@@ -216,7 +200,6 @@ class JREPackager implements Plugin<Project> {
                     println("COPIED ICON TO:" + innoDirPath+ "/"  + conf.iconFile.split("/").last())
                 }
 
-                //replace version
                 if(conf.replaceInnoSetupVersion != null){
                     List<String> lines = Files.readAllLines(new File(innoFilePath).toPath())
                     PrintWriter writer = new PrintWriter(innoFilePath)
@@ -232,7 +215,6 @@ class JREPackager implements Plugin<Project> {
                     writer.close();
                 }
 
-                //run inno compiler
                 project.exec {
                     workingDir innoDirPath
                     commandLine project.projectDir.absolutePath+"/gradle/innosetup/iscc", innoFilePath
@@ -338,7 +320,6 @@ Description: Cross-platform Git GUI client
         def jrePath = project.projectDir.absolutePath + "/.gradle/jre/" + jreVersion + "/" + operatingSystem
 
         if (new File(jrePath).isDirectory()) {
-            //println("JRE "+jreVersion+" FOR "+operatingSystem+" already present, not downloading it again.")
             return jrePath
         }
 
@@ -349,9 +330,15 @@ Description: Cross-platform Git GUI client
         if (tempDir.exists()) tempDir.deleteDir()
         Files.createDirectories(tempDir.toPath())
 
-        def downloaded = downloadFileWithRedirects("https://api.adoptopenjdk.net/v3/binary/latest/" + jreVersion + "/ga/" + operatingSystem + "/jre/hotspot/normal/adoptopenjdk", tempDir.path)
+        //Adoptium API v3 — replaces dead AdoptOpenJDK API
+        //format: https://api.adoptium.net/v3/binary/latest/{feature}/ga/{os}/{arch}/jre/hotspot/normal/eclipse
+        def parts = operatingSystem.split("/")
+        def osName = parts[0]
+        def arch   = parts[1]
+        def adoptiumUrl = "https://api.adoptium.net/v3/binary/latest/${jreVersion}/ga/${osName}/${arch}/jre/hotspot/normal/eclipse"
 
-        //EXTRACT IT
+        def downloaded = downloadFileWithRedirects(adoptiumUrl, tempDir.path)
+
         if (downloaded.endsWith(".zip")) {
             project.copy {
                 from project.zipTree(downloaded)
@@ -364,14 +351,12 @@ Description: Cross-platform Git GUI client
             }
         }
 
-        //IF EXTRACTION DIDN'T WORK
         new File(downloaded).delete()
         def files = tempDir.listFiles()
         if (files.size() != 1) {
             throw new Exception("JRE DOWNLOAD ERROR!");
         }
 
-        //MOVE IT TO THE RIGHT LOCATION
         def copyTarget = new File(jrePath)
         Files.createDirectories(copyTarget.parentFile.toPath())
         Files.move(files[0].toPath(), copyTarget.toPath(), StandardCopyOption.REPLACE_EXISTING)
