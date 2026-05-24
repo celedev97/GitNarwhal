@@ -101,6 +101,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         bar.add(JSeparator(SwingConstants.VERTICAL).apply { preferredSize = Dimension(1, 24) })
         bar.add(toolBtn("Refresh") { refresh() })
         bar.add(toolBtn("Fetch")   { fetch() })
+        bar.add(toolBtn("Pull")    { pull() })
+        bar.add(toolBtn("Push")    { push() })
         bar.add(toolBtn("Commit")  { commit() })
         bar.add(JSeparator(SwingConstants.VERTICAL).apply { preferredSize = Dimension(1, 24) })
         bar.add(toolBtn("Terminal") { openTerminal() })
@@ -156,8 +158,35 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     fun fetch() {
-        git.fetch()
-        refresh()
+        runWithProgress("Fetching…") { git.fetch() }
+    }
+
+    fun pull() {
+        runWithProgress("Pulling…") { git.pull() }
+    }
+
+    fun push() {
+        runWithProgress("Pushing…") { git.push() }
+    }
+
+    /** Runs [op] off-EDT under an indeterminate progress dialog, refreshing on completion. */
+    private fun runWithProgress(title: String, op: () -> com.gitnarwhal.utils.Command) {
+        val owner = SwingUtilities.getWindowAncestor(this)
+        val dialog = com.gitnarwhal.components.AddCloneTab.ProgressDialog(owner, title)
+        val worker = object : SwingWorker<com.gitnarwhal.utils.Command, Void>() {
+            override fun doInBackground() = op()
+            override fun done() {
+                dialog.dispose()
+                val cmd = try { get() } catch (e: Exception) { null }
+                if (cmd != null && !cmd.success) {
+                    JOptionPane.showMessageDialog(this@RepoTab,
+                        "$title failed:\n\n${cmd.output}", title, JOptionPane.ERROR_MESSAGE)
+                }
+                refresh()
+            }
+        }
+        worker.execute()
+        dialog.isVisible = true
     }
 
     fun refreshCommits() {
