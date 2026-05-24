@@ -1,48 +1,63 @@
 package com.gitnarwhal.views
 
-import com.gitnarwhal.components.AddCloneTab.*
-import javafx.event.ActionEvent
-import javafx.scene.Parent
-import javafx.scene.control.Button
-import javafx.scene.control.Tab
-import tornadofx.*
+import com.gitnarwhal.components.AddCloneTab.AddTab
+import com.gitnarwhal.components.AddCloneTab.CloneTab
+import com.gitnarwhal.components.AddCloneTab.CreateTab
+import java.awt.BorderLayout
+import java.awt.CardLayout
+import java.awt.FlowLayout
+import javax.swing.JButton
+import javax.swing.JPanel
 
-class AddCloneTab(val mainView: MainView): View() {
-    override val root:Parent by fxml(null as String?, true)
+class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
 
-    private val container by fxid<Parent>();
+    val tabTitle: String = "New Tab"
 
-    val tab by lazy{
-        val tab = Tab("New Tab")
-        tab.content = root
-        tab
-    }
+    private val cards = CardLayout()
+    private val container = JPanel(cards)
 
-    //region "Tab" buttons and contents
-    val activateCloneTab by fxid<Button>()
-    val activateAddTab by fxid<Button>()
-    val activateCreateTab by fxid<Button>()
+    val cloneTab  = CloneTab(this)
+    val addTab    = AddTab(this)
+    val createTab = CreateTab(this)
 
-    private val tabsMap = hashMapOf(
-            activateCloneTab to CloneTab(this).root,
-            activateAddTab to AddTab(this).root,
-            activateCreateTab to CreateTab(this).root
-    )
-    //endregion
+    val activateCloneTab  = JButton("Clone")
+    val activateAddTab    = JButton("Add")
+    val activateCreateTab = JButton("Create")
 
     init {
-        switchTab(activateCloneTab)
+        container.add(cloneTab,  CARD_CLONE)
+        container.add(addTab,    CARD_ADD)
+        container.add(createTab, CARD_CREATE)
+
+        val header = JPanel(FlowLayout(FlowLayout.CENTER, 8, 8))
+        header.add(activateCloneTab)
+        header.add(activateAddTab)
+        header.add(activateCreateTab)
+
+        activateCloneTab.addActionListener  { switchTab(CARD_CLONE) }
+        activateAddTab.addActionListener    { switchTab(CARD_ADD) }
+        activateCreateTab.addActionListener { switchTab(CARD_CREATE) }
+
+        add(header, BorderLayout.NORTH)
+        add(container, BorderLayout.CENTER)
+
+        switchTab(CARD_CLONE)
     }
 
+    fun switchTab(buttonOrCard: Any) {
+        val card = when (buttonOrCard) {
+            activateCloneTab  -> CARD_CLONE
+            activateAddTab    -> CARD_ADD
+            activateCreateTab -> CARD_CREATE
+            is String         -> buttonOrCard
+            else              -> CARD_CLONE
+        }
+        cards.show(container, card)
+    }
 
-    fun switchTab(event: ActionEvent) = switchTab(event.source as Button)
-
-    fun switchTab(tabButton:Button) {
-        //switching the active status
-        tabsMap.keys.forEach{it.removeClass("active")}
-        tabButton.addClass("active")
-
-        //replacing the container content
-        container.replaceChildren(tabsMap[tabButton]!!)
+    companion object {
+        const val CARD_CLONE  = "clone"
+        const val CARD_ADD    = "add"
+        const val CARD_CREATE = "create"
     }
 }
