@@ -4,10 +4,16 @@ import com.gitnarwhal.backend.Git
 import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.utils.ThemeService
 import com.gitnarwhal.views.MainView
+import com.gitnarwhal.views.SettingsDialog
 import java.awt.Dimension
+import java.awt.event.KeyEvent
 import java.util.jar.Manifest
 import javax.swing.ImageIcon
 import javax.swing.JFrame
+import javax.swing.JMenu
+import javax.swing.JMenuBar
+import javax.swing.JMenuItem
+import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
 
 fun main() {
@@ -42,8 +48,38 @@ private fun startApp() {
     val iconStream = ClassLoader.getSystemResourceAsStream("icon.png")
     if (iconStream != null) frame.iconImage = ImageIcon(iconStream.readAllBytes()).image
 
-    frame.contentPane = MainView()
+    val mainView = MainView()
+    frame.contentPane = mainView
+    frame.jMenuBar = buildMenuBar(frame, mainView)
     frame.pack()
     frame.setLocationRelativeTo(null)
     frame.isVisible = true
+}
+
+private fun buildMenuBar(frame: JFrame, mainView: MainView): JMenuBar {
+    val bar = JMenuBar()
+
+    val fileMenu = JMenu("File")
+    val newTab = JMenuItem("New Tab").apply {
+        accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_T, java.awt.Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
+        addActionListener { mainView.addNewCloneTab() }
+    }
+    val openRepo = JMenuItem("Open Repository…").apply {
+        accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_O, java.awt.Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
+        addActionListener { mainView.addNewOpenTab() }
+    }
+    val quit = JMenuItem("Quit").apply {
+        accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_Q, java.awt.Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
+        addActionListener { frame.dispatchEvent(java.awt.event.WindowEvent(frame, java.awt.event.WindowEvent.WINDOW_CLOSING)) }
+    }
+    fileMenu.add(newTab); fileMenu.add(openRepo); fileMenu.addSeparator(); fileMenu.add(quit)
+
+    val editMenu = JMenu("Edit")
+    val settings = JMenuItem("Settings…").apply {
+        addActionListener { SettingsDialog(frame).isVisible = true }
+    }
+    editMenu.add(settings)
+
+    bar.add(fileMenu); bar.add(editMenu)
+    return bar
 }
