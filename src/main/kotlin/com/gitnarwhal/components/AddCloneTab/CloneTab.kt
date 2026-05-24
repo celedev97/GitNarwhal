@@ -51,6 +51,12 @@ class CloneTab(private val addCloneTab: AddCloneTab) : JPanel(GridBagLayout()) {
         runBtn.addActionListener { run() }
         add(runBtn, gbc)
 
+        // filler row pushes the form to the top instead of being centered
+        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 3
+        gbc.weighty = 1.0; gbc.fill = GridBagConstraints.BOTH
+        add(JPanel().apply { isOpaque = false }, gbc)
+        gbc.weighty = 0.0; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.gridwidth = 1
+
         // auto-fill name + dest folder from URL on edit
         urlField.document.addDocumentListener(SimpleDocListener {
             val derived = deriveNameFromUrl(urlField.text)

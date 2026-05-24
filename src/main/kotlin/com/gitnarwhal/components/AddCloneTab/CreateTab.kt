@@ -44,6 +44,10 @@ class CreateTab(private val addCloneTab: AddCloneTab) : JPanel(GridBagLayout()) 
         val runBtn = JButton("Create")
         runBtn.addActionListener { run() }
         add(runBtn, gbc)
+
+        gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 3
+        gbc.weighty = 1.0; gbc.fill = GridBagConstraints.BOTH
+        add(JPanel().apply { isOpaque = false }, gbc)
     }
 
     private fun browse() {
