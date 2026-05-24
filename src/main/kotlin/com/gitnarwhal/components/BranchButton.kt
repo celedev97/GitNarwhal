@@ -1,34 +1,43 @@
 package com.gitnarwhal.components
 
 import com.gitnarwhal.views.RepoTab
-import javafx.scene.control.Label
-import javafx.scene.text.Font
-import javafx.scene.text.FontWeight
-import tornadofx.*
+import java.awt.Cursor
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import javax.swing.BorderFactory
+import javax.swing.JLabel
+import javax.swing.SwingConstants
 
-class BranchButton(name:String ,repo:RepoTab, selected: Boolean = false) : Label(name) {
+class BranchButton(
+    val name: String,
+    repo: RepoTab,
+    selected: Boolean = false
+) : JLabel(name, SwingConstants.LEFT) {
 
-    var selected:Boolean = false
-        set(value){
+    var selected: Boolean = false
+        set(value) {
             field = value
-            if(field){
-                addClass("active")
-            }else{
-                removeClass("active")
-            }
+            putClientProperty("JComponent.outline", if (value) "focus" else null)
+            font = font.deriveFont(if (value) java.awt.Font.BOLD else java.awt.Font.PLAIN)
+            repaint()
         }
 
     var tracking: String? = null
 
     init {
+        border = BorderFactory.createEmptyBorder(4, 8, 4, 8)
+        cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         this.selected = selected
-        addClass("branch-button")
-        onDoubleClick {
-            if(repo.git.selectBranch(name).success){
-                println("CHECKOUT: $name")
-                repo.refreshBranches()
-            }
-        }
-    }
 
+        addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                if (e.clickCount == 2) {
+                    if (repo.git.selectBranch(name).success) {
+                        println("CHECKOUT: $name")
+                        repo.refreshBranches()
+                    }
+                }
+            }
+        })
+    }
 }
