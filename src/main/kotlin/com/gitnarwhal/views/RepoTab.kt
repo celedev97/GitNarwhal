@@ -7,6 +7,8 @@ import com.gitnarwhal.components.CommitGraphCell
 import com.gitnarwhal.components.ProgressDialog
 import com.gitnarwhal.utils.Command
 import com.gitnarwhal.utils.OS
+import org.kordamp.ikonli.materialdesign.MaterialDesign
+import org.kordamp.ikonli.swing.FontIcon
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
@@ -30,11 +32,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     private val commitTableModel = object : AbstractTableModel() {
         private val cols = arrayOf("Graph", "Description", "Date", "Committer", "Commit")
-        override fun getRowCount()                   = commitList.size
-        override fun getColumnCount()                = cols.size
-        override fun getColumnName(col: Int)         = cols[col]
+        override fun getRowCount()           = commitList.size
+        override fun getColumnCount()        = cols.size
+        override fun getColumnName(col: Int) = cols[col]
         override fun getValueAt(row: Int, col: Int): Any {
             val c = commitList[row]
+            // All fields are pre-populated from git log — no git.show() call on EDT.
             return when (col) {
                 0 -> c; 1 -> c.title; 2 -> c.committerDate; 3 -> c.committer; 4 -> c.hash
                 else -> ""
@@ -59,10 +62,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     // ── Branch tree ───────────────────────────────────────────────────────────
 
-    /** Leaf data stored in branch tree nodes. */
     private data class BranchInfo(
-        val fullName: String,   // name passed to git commands
-        val leafName: String,   // last path segment — shown in tree
+        val fullName: String,
+        val leafName: String,
         val isActive: Boolean,
         val tracking: String? = null
     )
@@ -90,9 +92,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         branchRoot.add(remoteBranchesNode)
 
         branchTree = JTree(branchTreeModel).apply {
-            isRootVisible  = false
+            isRootVisible    = false
             showsRootHandles = true
-            cellRenderer   = BranchCellRenderer()
+            cellRenderer     = BranchCellRenderer()
             selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
             addMouseListener(buildBranchMouseAdapter())
         }
@@ -126,34 +128,42 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     // ── Branch tree renderer ──────────────────────────────────────────────────
 
     private inner class BranchCellRenderer : DefaultTreeCellRenderer() {
+        init {
+            // Null out all default tree icons — branch tree shows text only.
+            setLeafIcon(null)
+            setOpenIcon(null)
+            setClosedIcon(null)
+        }
+
         override fun getTreeCellRendererComponent(
             tree: JTree, value: Any?, sel: Boolean, expanded: Boolean,
             leaf: Boolean, row: Int, hasFocus: Boolean
         ): Component {
+            // Let super handle selection colours / background correctly.
             super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus)
-            icon = null   // no icons for now
+            // super uses the null icons set in init → JLabel icon stays null.
             val node = value as? DefaultMutableTreeNode ?: return this
             when (val obj = node.userObject) {
                 is BranchInfo -> {
                     text = obj.leafName
                     font = font.deriveFont(if (obj.isActive) Font.BOLD else Font.PLAIN)
+                    // Don't touch foreground — super already set correct selection/normal colour.
                 }
                 is String -> {
                     text = obj
-                    // Category headers (direct children of hidden root) are bold + muted
-                    if (node.parent == branchRoot) {
-                        font       = font.deriveFont(Font.BOLD, (font.size - 1).toFloat())
-                        foreground = UIManager.getColor("Label.disabledForeground") ?: foreground
-                    } else {
-                        font = font.deriveFont(Font.PLAIN)
-                    }
+                    // Category headers (direct children of hidden root) → bold only.
+                    font = if (node.parent == branchRoot)
+                        font.deriveFont(Font.BOLD)
+                    else
+                        font.deriveFont(Font.PLAIN)
+                    // Never override foreground — on dark themes the disabled colour is invisible.
                 }
             }
             return this
         }
     }
 
-    // ── Branch tree mouse listener ────────────────────────────────────────────
+    // ── Branch tree mouse handling ────────────────────────────────────────────
 
     private fun buildBranchMouseAdapter() = object : MouseAdapter() {
         override fun mousePressed(e: MouseEvent)  = checkPopup(e)
@@ -163,14 +173,16 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             if (!e.isPopupTrigger) return
             val tp = branchTree.getPathForLocation(e.x, e.y) ?: return
             branchTree.selectionPath = tp
-            val bi = (tp.lastPathComponent as? DefaultMutableTreeNode)?.userObject as? BranchInfo ?: return
+            val bi = (tp.lastPathComponent as? DefaultMutableTreeNode)?.userObject as? BranchInfo
+                ?: return
             buildBranchPopup(bi.fullName).show(branchTree, e.x, e.y)
         }
 
         override fun mouseClicked(e: MouseEvent) {
             if (e.clickCount == 2 && SwingUtilities.isLeftMouseButton(e)) {
                 val tp = branchTree.getPathForLocation(e.x, e.y) ?: return
-                val bi = (tp.lastPathComponent as? DefaultMutableTreeNode)?.userObject as? BranchInfo ?: return
+                val bi = (tp.lastPathComponent as? DefaultMutableTreeNode)?.userObject
+                    as? BranchInfo ?: return
                 checkoutBranch(bi.fullName)
             }
         }
@@ -218,53 +230,54 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     private fun checkoutBranch(branchName: String) {
         val r = git.selectBranch(branchName)
-        if (r.success) refreshBranches()
-        else showError("Checkout failed", r.output)
+        if (r.success) refreshBranches() else showError("Checkout failed", r.output)
     }
 
     // ── Sidebar ───────────────────────────────────────────────────────────────
 
     private fun buildSidebar(): JPanel {
         val sections = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
-        sections.add(sectionPanel("Branches", JScrollPane(branchTree).apply {
-            preferredSize = Dimension(240, 200)
-        }))
-        sections.add(sectionPanel("Stashes", stashList))
-
-        return JPanel(BorderLayout()).also {
-            it.add(JScrollPane(sections), BorderLayout.CENTER)
-        }
+        sections.add(sectionPanel("Branches", JScrollPane(branchTree)))
+        sections.add(sectionPanel("Stashes",  stashList))
+        return JPanel(BorderLayout()).also { it.add(JScrollPane(sections), BorderLayout.CENTER) }
     }
 
     private fun sectionPanel(title: String, body: JComponent): JComponent {
-        val wrapper = JPanel(BorderLayout())
-        wrapper.border    = BorderFactory.createTitledBorder(title)
-        wrapper.alignmentX = Component.LEFT_ALIGNMENT
-        wrapper.add(body, BorderLayout.CENTER)
-        return wrapper
+        val w = JPanel(BorderLayout())
+        w.border    = BorderFactory.createTitledBorder(title)
+        w.alignmentX = Component.LEFT_ALIGNMENT
+        w.add(body, BorderLayout.CENTER)
+        return w
     }
 
     // ── Toolbar ───────────────────────────────────────────────────────────────
 
-    private fun buildToolbar(): JPanel {
-        val bar = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4))
-        bar.add(toolBtn("Toggle Sidebar") { toggleSideBar() })
-        bar.add(JSeparator(SwingConstants.VERTICAL).apply { preferredSize = Dimension(1, 24) })
-        bar.add(toolBtn("Refresh") { refresh() })
-        bar.add(toolBtn("Fetch")   { fetch() })
-        bar.add(toolBtn("Pull")    { pull() })
-        bar.add(toolBtn("Push")    { push() })
-        bar.add(toolBtn("Commit")  { commit() })
-        bar.add(toolBtn("Stash")   { stashCurrentChanges() })
-        bar.add(JSeparator(SwingConstants.VERTICAL).apply { preferredSize = Dimension(1, 24) })
-        bar.add(toolBtn("Terminal") { openTerminal() })
-        bar.add(toolBtn("Explorer") { openExplorer() })
-        bar.add(toolBtn("Remote")   { openRemote() })
+    private fun buildToolbar(): JToolBar {
+        val bar = JToolBar().apply { isFloatable = false }
+
+        bar.add(iconBtn(MaterialDesign.MDI_MENU,           "Toggle Sidebar") { toggleSideBar() })
+        bar.addSeparator()
+        bar.add(iconBtn(MaterialDesign.MDI_REFRESH,        "Refresh")  { refresh() })
+        bar.add(iconBtn(MaterialDesign.MDI_CLOUD_DOWNLOAD, "Fetch")    { fetch() })
+        bar.add(iconBtn(MaterialDesign.MDI_ARROW_DOWN_BOLD,"Pull")     { pull() })
+        bar.add(iconBtn(MaterialDesign.MDI_ARROW_UP_BOLD,  "Push")     { push() })
+        bar.add(iconBtn(MaterialDesign.MDI_GIT,            "Commit")   { commit() })
+        bar.add(iconBtn(MaterialDesign.MDI_ARCHIVE,        "Stash")    { stashCurrentChanges() })
+        bar.addSeparator()
+        bar.add(iconBtn(MaterialDesign.MDI_CONSOLE,        "Terminal") { openTerminal() })
+        bar.add(iconBtn(MaterialDesign.MDI_FOLDER,         "Explorer") { openExplorer() })
+        bar.add(iconBtn(MaterialDesign.MDI_EARTH,          "Remote")   { openRemote() })
         return bar
     }
 
-    private fun toolBtn(text: String, action: () -> Unit) =
-        JButton(text).apply { addActionListener { action() } }
+    private fun iconBtn(icon: org.kordamp.ikonli.Ikon, label: String, action: () -> Unit): JButton =
+        JButton(label, FontIcon.of(icon, 18)).apply {
+            horizontalTextPosition = SwingConstants.CENTER
+            verticalTextPosition   = SwingConstants.BOTTOM
+            toolTipText            = label
+            isFocusable            = false
+            addActionListener { action() }
+        }
 
     private fun toggleSideBar() {
         if (sideBarOpen) {
@@ -377,7 +390,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         refresh()
     }
 
-    // ── Async refresh helpers ─────────────────────────────────────────────────
+    // ── Async refresh ─────────────────────────────────────────────────────────
 
     private data class RefreshSnapshot(
         val branchesOut: String, val branchOk: Boolean,
@@ -385,7 +398,6 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val stashOut: String
     )
 
-    /** Runs all git reads in one background thread, then applies updates on EDT. */
     fun refresh() {
         object : SwingWorker<RefreshSnapshot, Void>() {
             override fun doInBackground(): RefreshSnapshot {
@@ -404,7 +416,6 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }.execute()
     }
 
-    /** Re-reads only branches (used after branch operations). */
     fun refreshBranches() {
         object : SwingWorker<String?, Void>() {
             override fun doInBackground(): String? {
@@ -418,7 +429,6 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }.execute()
     }
 
-    /** Re-reads only stashes (used after stash operations). */
     fun refreshStashes() {
         object : SwingWorker<String, Void>() {
             override fun doInBackground() = git.stashList().output
@@ -429,9 +439,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }.execute()
     }
 
-    // ── Data application (EDT-only) ───────────────────────────────────────────
+    // ── Data application (EDT) ────────────────────────────────────────────────
 
-    /** Rebuilds the branch tree from raw `git branch --all -vv` output. */
     private fun applyBranches(output: String) {
         localBranchesNode.removeAllChildren()
         remoteBranchesNode.removeAllChildren()
@@ -443,11 +452,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             val parts    = cleaned.replace("\\s+".toRegex(), " ").split(" ")
             val fullName = parts[0]
 
-            if (cleaned.contains(" -> ")) continue    // skip HEAD pointer lines
+            if (cleaned.contains(" -> ")) continue   // skip HEAD pointer
 
             if (fullName.startsWith("remotes/")) {
-                val withoutPrefix = fullName.removePrefix("remotes/")
-                insertBranch(remoteBranchesNode, withoutPrefix, active = false, tracking = null)
+                insertBranch(remoteBranchesNode, fullName.removePrefix("remotes/"), false, null)
             } else {
                 val tracking = if (parts.size > 2)
                     "^\\[([^\\]:]+)".toRegex().find(parts.drop(2).joinToString(" "))
@@ -458,53 +466,67 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
 
         branchTreeModel.reload()
-        SwingUtilities.invokeLater {
-            for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
-        }
+        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
     }
 
-    /**
-     * Inserts a branch path into [parent], creating intermediate String folder
-     * nodes for each "/" segment, e.g. "feature/my-branch" →
-     *   parent → "feature" → BranchInfo("feature/my-branch", "my-branch", …)
-     */
     private fun insertBranch(
-        parent: DefaultMutableTreeNode,
-        path: String,
-        active: Boolean,
-        tracking: String?
+        parent: DefaultMutableTreeNode, path: String, active: Boolean, tracking: String?
     ) {
-        val segments = path.split("/")
-        var current  = parent
-        for (i in 0 until segments.size - 1) {
-            val seg = segments[i]
+        val segs    = path.split("/")
+        var current = parent
+        for (i in 0 until segs.size - 1) {
+            val seg = segs[i]
             current = current.children().asSequence()
                 .filterIsInstance<DefaultMutableTreeNode>()
                 .firstOrNull { it.userObject == seg }
                 ?: DefaultMutableTreeNode(seg).also { current.add(it) }
         }
-        current.add(DefaultMutableTreeNode(BranchInfo(path, segments.last(), active, tracking)))
+        current.add(DefaultMutableTreeNode(BranchInfo(path, segs.last(), active, tracking)))
     }
 
-    /** Rebuilds the commit table from raw `git log --pretty=format:%H %P` output. */
+    /**
+     * Parses the richer git log format (RS/US delimited) and pre-populates
+     * every Commit with its metadata so the table can render without
+     * triggering git-show on the EDT.
+     *
+     * Record separator :  (ASCII RS)
+     * Field  separator :  (ASCII US)
+     * Fields: hash | parentHashes | shortHash | author | authorDateUnix
+     *             | committer | committerDateUnix | subject
+     */
     private fun applyCommits(logOutput: String) {
         val localMap  = LinkedHashMap<String, Commit>()
         val localList = mutableListOf<Commit>()
 
-        for (line in logOutput.lines()) {
-            val hashes = line.trim().split(" ").filter { it.isNotEmpty() }
-            if (hashes.isEmpty()) continue
-            hashes.forEach { h -> if (!localMap.containsKey(h)) localMap[h] = Commit(h, this) }
-            val commit  = localMap[hashes[0]]!!
-            val parents = if (hashes.size > 1) hashes.drop(1).mapNotNull { localMap[it] } else emptyList()
+        for (record in logOutput.split('')) {
+            val f = record.split('')
+            if (f.size < 8) continue
+            val hash         = f[0].trim()
+            if (hash.isBlank()) continue
+            val parentHashes = f[1].split(" ").filter { it.isNotBlank() }
+            val shortHash    = f[2]
+            val author       = f[3]
+            val authorDate   = f[4]
+            val committer    = f[5]
+            val committerDate = f[6]
+            val title        = f[7]
+
+            val commit = localMap.getOrPut(hash) { Commit(hash, this) }
+            // Pre-populate: shortHash(0), author(1), authorDate(2),
+            //               committer(3), committerDate(4), title(5)
+            commit.prePopulate(listOf(shortHash, author, authorDate, committer, committerDate, title))
+
+            val parents = parentHashes.mapNotNull { localMap[it] }
             parents.forEach { p -> p.childs.add(commit); commit.parents.add(p) }
         }
 
+        // DFS topological sort for graph layout
         var y = 0
         fun dfs(c: Commit) {
             if (!c.explored) { c.explored = true; c.childs.forEach { dfs(it) }; c.y = y++ }
         }
-        localMap.values.sortedBy { -it.committerTimeStamp.toLong() }.forEach { dfs(it) }
+        localMap.values.sortedBy { runCatching { -it.committerTimeStamp.toLong() }.getOrDefault(0L) }
+            .forEach { dfs(it) }
         localMap.values.sortedBy { it.y }.forEach { localList.add(it) }
 
         commitList.clear()
@@ -517,7 +539,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         for (line in output.lines()) if (line.isNotBlank()) stashListModel.addElement(line)
     }
 
-    // ── Toolbar actions (fetch / pull / push run off-EDT with progress dialog) ─
+    // ── Toolbar git actions ───────────────────────────────────────────────────
 
     fun commit() {
         val owner = SwingUtilities.getWindowAncestor(this)
@@ -528,12 +550,6 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     fun pull()  = runWithProgress("Pulling…")   { git.pull() }
     fun push()  = runWithProgress("Pushing…")   { git.push() }
 
-    /**
-     * Runs [op] on a background thread under a modal [ProgressDialog].
-     * On failure the dialog stays open showing git output.
-     * On success the dialog auto-closes (unless user checked "Show output"),
-     * then [refresh] is called.
-     */
     private fun runWithProgress(title: String, op: () -> Command) {
         val owner  = SwingUtilities.getWindowAncestor(this)
         val dialog = ProgressDialog(owner, title)
@@ -541,15 +557,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             override fun doInBackground() = op()
             override fun done() {
                 val cmd = try { get() } catch (e: Exception) {
-                    dialog.finish("Error: ${e.message}", false)
-                    return
+                    dialog.finish("Error: ${e.message}", false); return
                 }
                 dialog.finish(cmd.output, cmd.success)
-                refresh()   // async — safe to call even while dialog may still be visible
+                refresh()
             }
         }
         worker.execute()
-        dialog.isVisible = true   // modal — pumps its own event loop until disposed
+        dialog.isVisible = true
     }
 
     // ── Misc helpers ──────────────────────────────────────────────────────────
@@ -574,7 +589,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE) == JOptionPane.OK_OPTION
 
     private fun showError(title: String, body: String) =
-        JOptionPane.showMessageDialog(this, body.ifBlank { "(no output)" }, title, JOptionPane.ERROR_MESSAGE)
+        JOptionPane.showMessageDialog(this, body.ifBlank { "(no output)" }, title,
+            JOptionPane.ERROR_MESSAGE)
 
     private fun copyToClipboard(text: String) =
         java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(

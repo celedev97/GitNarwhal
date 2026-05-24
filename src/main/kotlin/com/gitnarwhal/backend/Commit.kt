@@ -34,10 +34,24 @@ class Commit(var hash: String, val repoTab: RepoTab) {
     val parents = arrayListOf<Commit>()
 
     override fun toString(): String = hash
+
+    /**
+     * Pre-populates GitShow data from a richer git-log pass so that
+     * [title], [committer], [committerDate], etc. can be read on the EDT
+     * without triggering a blocking git-show subprocess per commit.
+     *
+     * @param data list matching GitShow.linePositions indices:
+     *   [0]=shortHash, [1]=author, [2]=authorDateUnix,
+     *   [3]=committer,  [4]=committerDateUnix, [5]=title
+     */
+    fun prePopulate(data: List<String>) {
+        show.commitShowData = data
+    }
 }
 
 open class GitShow {
-    var commitShowData: List<String>? = null
+    /** Volatile: written in a SwingWorker background thread, read on EDT. */
+    @Volatile var commitShowData: List<String>? = null
 
     val linePositions = hashMapOf(
             "shortHash" to 0,
