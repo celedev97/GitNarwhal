@@ -58,6 +58,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private val localBranchesBox  = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
     private val remoteBranchesBox = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
 
+    private val stashListModel = DefaultListModel<String>()
+    private val stashList = JList(stashListModel).apply {
+        selectionMode = ListSelectionModel.SINGLE_SELECTION
+        componentPopupMenu = buildStashPopup()
+    }
+
     private val sideBar: JPanel
     private val sideBarSplit: JSplitPane
     private var sideBarOpen = true
@@ -185,6 +191,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         bar.add(toolBtn("Pull")    { pull() })
         bar.add(toolBtn("Push")    { push() })
         bar.add(toolBtn("Commit")  { commit() })
+        bar.add(toolBtn("Stash")   { stashCurrentChanges() })
         bar.add(JSeparator(SwingConstants.VERTICAL).apply { preferredSize = Dimension(1, 24) })
         bar.add(toolBtn("Terminal") { openTerminal() })
         bar.add(toolBtn("Explorer") { openExplorer() })
@@ -204,6 +211,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val sections = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
         sections.add(sectionPanel("Local Branches",  localBranchesBox))
         sections.add(sectionPanel("Remote Branches", remoteBranchesBox))
+        sections.add(sectionPanel("Stashes",         stashList))
 
         panel.add(JScrollPane(sections), BorderLayout.CENTER)
         return panel
@@ -236,6 +244,43 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     fun refresh() {
         refreshBranches()
         refreshCommits()
+        refreshStashes()
+    }
+
+    fun refreshStashes() {
+        stashListModel.clear()
+        val r = git.stashList()
+        if (!r.success) return
+        for (line in r.output.lines()) if (line.isNotBlank()) stashListModel.addElement(line)
+    }
+
+    private fun stashCurrentChanges() {
+        val msg = JOptionPane.showInputDialog(this, "Stash message (optional):", "Stash", JOptionPane.QUESTION_MESSAGE) ?: ""
+        val r = if (msg.isBlank()) git.stashPush() else git.stashPush(msg)
+        if (!r.success) JOptionPane.showMessageDialog(this, r.output, "Stash failed", JOptionPane.ERROR_MESSAGE)
+        refresh()
+    }
+
+    private fun buildStashPopup(): JPopupMenu {
+        val menu = JPopupMenu()
+        menu.add(menuItem("Apply") { stashAction { i -> git.stashApply(i) } })
+        menu.add(menuItem("Pop")   { stashAction { i -> git.stashPop(i) } })
+        menu.add(menuItem("Drop")  {
+            val idx = stashList.selectedIndex.takeIf { it >= 0 } ?: return@menuItem
+            if (confirm("Drop stash@{$idx}? (irreversible)")) {
+                val r = git.stashDrop(idx)
+                if (!r.success) JOptionPane.showMessageDialog(this, r.output, "Drop failed", JOptionPane.ERROR_MESSAGE)
+                refresh()
+            }
+        })
+        return menu
+    }
+
+    private fun stashAction(op: (Int) -> com.gitnarwhal.utils.Command) {
+        val idx = stashList.selectedIndex.takeIf { it >= 0 } ?: return
+        val r = op(idx)
+        if (!r.success) JOptionPane.showMessageDialog(this, r.output, "Stash op failed", JOptionPane.ERROR_MESSAGE)
+        refresh()
     }
 
     fun fetch() {
