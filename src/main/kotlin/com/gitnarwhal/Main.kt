@@ -1,23 +1,20 @@
 package com.gitnarwhal
 
-import com.formdev.flatlaf.themes.FlatMacDarkLaf
 import com.gitnarwhal.backend.Git
 import com.gitnarwhal.utils.Settings
+import com.gitnarwhal.utils.ThemeService
 import com.gitnarwhal.views.MainView
 import java.awt.Dimension
 import java.util.jar.Manifest
 import javax.swing.ImageIcon
 import javax.swing.JFrame
 import javax.swing.SwingUtilities
-import javax.swing.UIManager
 
 fun main() {
-    // FlatLaf must be installed before any Swing component is created
-    try {
-        UIManager.setLookAndFeel(FlatMacDarkLaf())
-    } catch (e: Exception) {
-        System.err.println("Failed to install FlatLaf: ${e.message}")
-    }
+    // FlatLaf must be installed before any Swing component is created.
+    // Register the custom defaults source first so FlatLaf.properties is picked up.
+    ThemeService.registerDefaultsSource()
+    ThemeService.applyFromSettings()
 
     SwingUtilities.invokeLater { startApp() }
 }
