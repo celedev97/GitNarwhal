@@ -4,46 +4,78 @@ import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.utils.toPath
 import com.gitnarwhal.views.AddCloneTab
 import com.gitnarwhal.views.RepoTab
-import javafx.scene.Parent
-import javafx.scene.control.Alert
-import javafx.scene.control.TextField
-import javafx.stage.DirectoryChooser
 import org.json.JSONObject
-import tornadofx.*
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import java.awt.Insets
 import java.nio.file.Files
+import javax.swing.*
 
-class AddTab(private val addCloneTab: AddCloneTab) : Fragment() {
-    override val root:Parent by fxml(null as String?, true)
+class AddTab(private val addCloneTab: AddCloneTab) : JPanel(GridBagLayout()) {
 
-    val path:TextField by fxid()
-    val name:TextField by fxid()
+    val pathField = JTextField(30)
+    val nameField = JTextField(20)
 
-    private val directoryChooser = DirectoryChooser()
+    init {
+        border = BorderFactory.createEmptyBorder(16, 16, 16, 16)
+
+        val gbc = GridBagConstraints().apply {
+            insets = Insets(4, 4, 4, 4)
+            fill   = GridBagConstraints.HORIZONTAL
+            anchor = GridBagConstraints.WEST
+        }
+
+        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.0
+        add(JLabel("Path:"), gbc)
+        gbc.gridx = 1; gbc.weightx = 1.0
+        add(pathField, gbc)
+        gbc.gridx = 2; gbc.weightx = 0.0
+        val browseBtn = JButton("Browse…")
+        browseBtn.addActionListener { browse() }
+        add(browseBtn, gbc)
+
+        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.0
+        add(JLabel("Name:"), gbc)
+        gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0
+        add(nameField, gbc)
+        gbc.gridwidth = 1
+
+        gbc.gridx = 1; gbc.gridy = 2
+        val runBtn = JButton("Open")
+        runBtn.addActionListener { run() }
+        add(runBtn, gbc)
+    }
 
     fun run() {
-        if(!Files.isDirectory(path.text.toPath())){
-            Alert(Alert.AlertType.ERROR,"Error: The specified path is not a directory").show()
+        val pathText = pathField.text
+        if (!Files.isDirectory(pathText.toPath())) {
+            JOptionPane.showMessageDialog(this, "Error: The specified path is not a directory", "Error", JOptionPane.ERROR_MESSAGE)
             return
         }
 
-        var openTabsPaths = Settings.openTabs.map { (it as JSONObject).getString("path") }
-        if(openTabsPaths.contains(path.text)){
-            //TODO: handle this in a better way, like... switch the tab :v
-            Alert(Alert.AlertType.ERROR,"This repository is already open in another tab").showAndWait()
+        val openTabsPaths = Settings.openTabs.map { (it as JSONObject).getString("path") }
+        if (openTabsPaths.contains(pathText)) {
+            //TODO: switch to existing tab instead of showing error
+            JOptionPane.showMessageDialog(this, "This repository is already open in another tab", "Error", JOptionPane.ERROR_MESSAGE)
             return
         }
 
-        with(addCloneTab.mainView){
-            var repo = RepoTab(path.text, name.text)
+        with(addCloneTab.mainView) {
+            val repo = RepoTab(pathText, nameField.text)
             addTab(repo)
             selectTab(repo)
-            closeTab(addCloneTab.tab)
+            closeTab(addCloneTab)
         }
     }
 
-    fun browse(){
-        path.text = directoryChooser.showDialog(currentStage)?.absolutePath?.toString() ?: path.text
-        name.text = path.text.toPath().last().toString()
+    fun browse() {
+        val chooser = JFileChooser().apply {
+            fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+        }
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            val abs = chooser.selectedFile.absolutePath
+            pathField.text = abs
+            nameField.text = abs.toPath().fileName.toString()
+        }
     }
-
 }
