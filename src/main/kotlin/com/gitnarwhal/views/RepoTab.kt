@@ -4,260 +4,237 @@ import com.gitnarwhal.backend.Commit
 import com.gitnarwhal.backend.Git
 import com.gitnarwhal.components.BranchButton
 import com.gitnarwhal.components.CommitDataPanel
-import com.gitnarwhal.utils.CollapsibleTabPaneHelper.Companion.collapsible
+import com.gitnarwhal.components.CommitGraphCell
 import com.gitnarwhal.utils.OS
-import javafx.scene.Parent
-import javafx.scene.control.*
-import javafx.scene.layout.VBox
-import tornadofx.*
+import java.awt.BorderLayout
+import java.awt.Component
+import java.awt.Dimension
+import java.awt.FlowLayout
+import javax.swing.*
+import javax.swing.table.AbstractTableModel
+import javax.swing.table.DefaultTableCellRenderer
 
-class RepoTab(var path: String, tabName: String) : Fragment() {
-    //region GUI components
-    override val root:Parent by fxml(null as String?, true)
+class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
-    val commitTable:TableView<Commit> by fxid()
+    val git: Git = Git(path)
 
-    val tab by lazy{
-        val tab = Tab()
-        tab.content = root
-        tab
+    private val commits: LinkedHashMap<String, Commit> = LinkedHashMap()
+    private val commitList: MutableList<Commit> = mutableListOf()
+
+    private val commitTableModel = object : AbstractTableModel() {
+        private val columnNames = arrayOf("Graph", "Description", "Date", "Committer", "Commit")
+        override fun getRowCount(): Int = commitList.size
+        override fun getColumnCount(): Int = columnNames.size
+        override fun getColumnName(col: Int): String = columnNames[col]
+        override fun getValueAt(row: Int, col: Int): Any {
+            val c = commitList[row]
+            return when (col) {
+                0 -> c
+                1 -> c.title
+                2 -> c.committerDate
+                3 -> c.committer
+                4 -> c.hash
+                else -> ""
+            }
+        }
+        override fun getColumnClass(col: Int): Class<*> = if (col == 0) Commit::class.java else String::class.java
+        override fun isCellEditable(row: Int, col: Int): Boolean = false
     }
 
-    val localBranchesBox:VBox by fxid()
-    val remoteBranchesBox:VBox by fxid()
+    val commitTable: JTable = JTable(commitTableModel).apply {
+        autoResizeMode = JTable.AUTO_RESIZE_LAST_COLUMN
+        selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
+        rowHeight = 22
+        columnModel.getColumn(0).cellRenderer = CommitGraphCell()
+        columnModel.getColumn(0).preferredWidth = 80
+        columnModel.getColumn(1).preferredWidth = 400
+        columnModel.getColumn(2).preferredWidth = 140
+        columnModel.getColumn(3).preferredWidth = 160
+        columnModel.getColumn(4).preferredWidth = 80
+    }
 
-    val sideBarOpenButton:Button by fxid()
-    val sideBarCloseButton:Button by fxid()
+    private val commitDataPanel = CommitDataPanel(this)
 
-    val sideBarSplit:SplitPane by fxid()
-    val sideBar:VBox by fxid()
+    private val localBranchesBox  = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
+    private val remoteBranchesBox = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
 
-
-    val collapsible:TabPane by fxid()
-
-    val commitDataTab:Parent by fxid()
-    //endregion
-
-    var git: Git
-    private var commits: HashMap<String, Commit> = hashMapOf()
-    //endregion
-
-
+    private val sideBar: JPanel
+    private val sideBarSplit: JSplitPane
+    private var sideBarOpen = true
+    private var previousSideBarDivider = 240
 
     init {
-        tab.text = tabName
-        this.git = Git(this.path)
+        sideBar = buildSidebar()
 
-        val commitDataPanel = CommitDataPanel(this)
-        commitDataTab.addChildIfPossible(commitDataPanel.root)
+        val rightSplit = JSplitPane(
+            JSplitPane.VERTICAL_SPLIT,
+            JScrollPane(commitTable),
+            JScrollPane(commitDataPanel)
+        ).apply {
+            resizeWeight = 0.7
+            dividerLocation = 400
+        }
 
-        commitTable.columns.clear()
+        sideBarSplit = JSplitPane(JSplitPane.HORIZONTAL_SPLIT, sideBar, rightSplit).apply {
+            dividerLocation = previousSideBarDivider
+            resizeWeight = 0.0
+        }
 
-        commitTable.column("Graph",         Commit::graph).cellFormat {graphic = item}
-        commitTable.column("Description",   Commit::title)
-        commitTable.column("Date",          Commit::committerDate)
-        commitTable.column("Committer",     Commit::committer)
-        commitTable.column("Commit",        Commit::hash)
+        add(buildToolbar(), BorderLayout.NORTH)
+        add(sideBarSplit, BorderLayout.CENTER)
 
-        commitTable.columns.forEach { it.isSortable = false }
-
-
-        commitTable.onSelectionChange {
-            if(it != null) {
-                commitDataPanel.getInfosFromHash(it)
+        commitTable.selectionModel.addListSelectionListener { e ->
+            if (!e.valueIsAdjusting) {
+                val row = commitTable.selectedRow
+                if (row in commitList.indices) commitDataPanel.showCommit(commitList[row])
             }
         }
 
-
-
-        initSideBar()
-
         refresh()
-
-        collapsible.collapsible()
     }
 
-    fun commit(){
+    //region Toolbar
+    private fun buildToolbar(): JPanel {
+        val bar = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4))
+
+        bar.add(toolBtn("Toggle Sidebar") { toggleSideBar() })
+        bar.add(JSeparator(SwingConstants.VERTICAL).apply { preferredSize = Dimension(1, 24) })
+        bar.add(toolBtn("Refresh") { refresh() })
+        bar.add(toolBtn("Fetch")   { fetch() })
+        bar.add(toolBtn("Commit")  { commit() })
+        bar.add(JSeparator(SwingConstants.VERTICAL).apply { preferredSize = Dimension(1, 24) })
+        bar.add(toolBtn("Terminal") { openTerminal() })
+        bar.add(toolBtn("Explorer") { openExplorer() })
+        bar.add(toolBtn("Remote")   { openRemote() })
+        return bar
+    }
+
+    private fun toolBtn(text: String, action: () -> Unit) = JButton(text).apply {
+        addActionListener { action() }
+    }
+    //endregion
+
+    //region Sidebar
+    private fun buildSidebar(): JPanel {
+        val panel = JPanel(BorderLayout())
+
+        val sections = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
+        sections.add(sectionPanel("Local Branches",  localBranchesBox))
+        sections.add(sectionPanel("Remote Branches", remoteBranchesBox))
+
+        panel.add(JScrollPane(sections), BorderLayout.CENTER)
+        return panel
+    }
+
+    private fun sectionPanel(title: String, body: JComponent): JComponent {
+        val wrapper = JPanel(BorderLayout())
+        wrapper.border = BorderFactory.createTitledBorder(title)
+        wrapper.add(body, BorderLayout.CENTER)
+        wrapper.alignmentX = Component.LEFT_ALIGNMENT
+        return wrapper
+    }
+
+    private fun toggleSideBar() {
+        if (sideBarOpen) {
+            previousSideBarDivider = sideBarSplit.dividerLocation
+            sideBarSplit.dividerLocation = 0
+        } else {
+            sideBarSplit.dividerLocation = previousSideBarDivider
+        }
+        sideBarOpen = !sideBarOpen
+    }
+    //endregion
+
+    fun commit() {
+        //TODO: open commit dialog and call `git commit -m`
         println("COMMIT!!!: $path")
-        println("THIS: $this")
     }
 
-    fun refresh(){
+    fun refresh() {
         refreshBranches()
         refreshCommits()
     }
 
-    fun fetch(){
-        git.fetch();
+    fun fetch() {
+        git.fetch()
         refresh()
     }
 
-    fun refreshCommits(){
+    fun refreshCommits() {
         val log = git.log()
-        if(!log.success)
-            return
+        if (!log.success) return
 
-        commitTable.items.clear()
         commits.clear()
+        commitList.clear()
 
-        //region Getting commits base structure
-        for (hashes in log.output.lines().map { it.replace("".toRegex(),"").trim().split(" ") }){
-            //creating commits for hashes found if they doesn't exists
-            hashes.forEach {
-                if(!commits.contains(it))
-                    commits[it] = Commit(it, this)
+        for (hashes in log.output.lines().map { it.trim().split(" ").filter { s -> s.isNotEmpty() } }) {
+            if (hashes.isEmpty()) continue
+            hashes.forEach { h ->
+                if (!commits.contains(h)) commits[h] = Commit(h, this)
             }
-
-            //separating parents from commit
             val commit = commits[hashes[0]]!!
-            val parents = if(hashes.size>1) hashes.subList(1,hashes.size).map { commits[it]!! } else listOf()
-
-            //linking parents to child and child to parents
-            parents.forEach { parent->
+            val parents = if (hashes.size > 1) hashes.subList(1, hashes.size).map { commits[it]!! } else listOf()
+            parents.forEach { parent ->
                 parent.childs.add(commit)
                 commit.parents.add(parent)
             }
-
-            //TODO: commit.column = helpmeplease
         }
-        //endregion
 
-        //region Assigning y coordinate to commits based on dfs and date
         var y = 0
-        fun dfs(commit: Commit){
-            if (!commit.explored){
-                commit.explored = true;
-                commit.childs.forEach { child ->
-                    dfs(child)
-                }
-                commit.y = y
+        fun dfs(c: Commit) {
+            if (!c.explored) {
+                c.explored = true
+                c.childs.forEach { dfs(it) }
+                c.y = y
                 y++
             }
         }
+        commits.values.sortedBy { -it.committerTimeStamp.toLong() }.forEach { dfs(it) }
 
-        commits.values.sortedBy { -it.committerTimeStamp.toInt() }.forEach {
-            dfs(it)
-        }
-        //endregion
-
-        //Drawing commits... ?
-        commits.values.sortedBy { it.y }.forEach{
-            commitTable.items.add(it)
-        }
-
+        commits.values.sortedBy { it.y }.forEach { commitList.add(it) }
+        commitTableModel.fireTableDataChanged()
     }
 
     fun refreshBranches() {
         val gitBranches = git.branches()
-        if(!gitBranches.success)
-            return
+        if (!gitBranches.success) return
 
-        localBranchesBox.children.clear()
-        remoteBranchesBox.children.clear()
+        localBranchesBox.removeAll()
+        remoteBranchesBox.removeAll()
 
-        for (line in gitBranches.output.lines()){
+        for (line in gitBranches.output.lines()) {
+            if (line.isBlank()) continue
+            val isActive = line.trim().startsWith("*")
             val branchParts = line.removePrefix("*").trim().replace("\\s+".toRegex(), " ").split(" ")
             val branchFullName  = branchParts[0]
             val branchShortName = branchFullName.substringAfter('/')
 
-            val branchButton = BranchButton(branchShortName, this,line[0] == '*')
+            val branchButton = BranchButton(branchShortName, this, isActive)
 
-            if(branchShortName == branchFullName){
-                //LOCAL BRANCH
-                localBranchesBox.children.add(branchButton)
-                branchButton.tracking = "^\\[(\\w\\w*\\/*\\w\\w*)\\]".toRegex().find(branchParts[2])?.groups?.get(1)?.value
-
-                println()
-
-            }else{
-                //REMOTE BRANCH
-                remoteBranchesBox.children.add(branchButton)
-            }
-        }
-
-    }
-
-    fun openTerminal() = runAsync {  OS.TERMINAL.execute(path) }
-    fun openExplorer() = runAsync { (OS.EXPLORER + path).execute() }
-    fun openRemote() = runAsync { (OS.BROWSER + git.remoteUrl().output).execute() }
-
-
-    //region Sidebar stuff
-    private val sideBarPanesOpened = hashMapOf<TitledPane, Boolean>()
-
-    private var previousSideBarWidth = 0.3;
-    private var originalSideBarMaxWidth = 0.0;
-    private var originalSideBarMinWidth = 0.0;
-
-    private fun initSideBar(){
-        //adding listener that open the sidebar if a titledPane is opened with the sidebar closed
-        for(pane in sideBar.children.filterIsInstance<TitledPane>()){
-            pane.expandedProperty().addListener { _, _, newValue ->
-                if(newValue && sideBarOpenButton.isVisible){
-                    openSideBar()
-                    pane.isExpanded = true
+            if (branchShortName == branchFullName) {
+                localBranchesBox.add(branchButton)
+                if (branchParts.size > 2) {
+                    branchButton.tracking = "^\\[(\\w\\w*\\/*\\w\\w*)\\]".toRegex().find(branchParts[2])?.groups?.get(1)?.value
                 }
+            } else {
+                remoteBranchesBox.add(branchButton)
             }
         }
+        localBranchesBox.revalidate();  localBranchesBox.repaint()
+        remoteBranchesBox.revalidate(); remoteBranchesBox.repaint()
     }
 
-    fun openSideBar(){
-        if(!sideBarOpenButton.isVisible)
-            return;
-
-        sideBar.removeClass("closed")
-
-        //switching the buttons
-        sideBarOpenButton.hide()
-        sideBarCloseButton.show()
-        sideBarCloseButton.requestFocus()
-
-        //reopening old panes
-        sideBarPanesOpened.forEach { tab, expanded ->
-            tab.isExpanded = expanded
-        }
-
-        //opening sidebar
-        sideBar.minWidth = originalSideBarMinWidth
-        sideBar.maxWidth = originalSideBarMaxWidth
-        sideBarSplit.setDividerPosition(0,  previousSideBarWidth)
-    }
-    fun closeSideBar(){
-        if(!sideBarCloseButton.isVisible)
-            return;
-
-        sideBar.addClass("closed")
-
-        //switching the buttons
-        sideBarCloseButton.hide()
-        sideBarOpenButton.show()
-        sideBarOpenButton.requestFocus()
-
-        //saving last opened panes
-        sideBar.children.filterIsInstance<TitledPane>().forEach {
-            sideBarPanesOpened[it] = it.isExpanded
-        }
-
-        //saving sidebar data
-        previousSideBarWidth = sideBarSplit.dividerPositions[0]
-        originalSideBarMinWidth = sideBar.minWidth
-        originalSideBarMaxWidth = sideBar.maxWidth
-
-        //closing all the panes
-        sideBarPanesOpened.keys.forEach {
-            it.isExpanded = false
-        }
-
-        //closing sidebar
-        sideBar.minWidth = sideBarOpenButton.width
-        sideBar.maxWidth = sideBarOpenButton.width
-    }
+    fun openTerminal() = Thread { OS.TERMINAL.execute(path) }.start()
+    fun openExplorer() = Thread { (OS.EXPLORER + path).execute() }.start()
+    fun openRemote()   = Thread { (OS.BROWSER  + git.remoteUrl().output).execute() }.start()
 
     fun selectCommit(hash: String) {
-        commitTable.selectionModel.select(commits[hash])
+        val idx = commitList.indexOfFirst { it.hash == hash }
+        if (idx >= 0) {
+            commitTable.selectionModel.setSelectionInterval(idx, idx)
+            commitTable.scrollRectToVisible(commitTable.getCellRect(idx, 0, true))
+        }
     }
-    //endregion
-
-
-
 }
+
+private class TextCellRenderer : DefaultTableCellRenderer()
