@@ -64,6 +64,10 @@ dependencies {
     implementation "org.kordamp.ikonli:ikonli-swing:$ikonli_version"
     implementation "org.kordamp.ikonli:ikonli-materialdesign-pack:$ikonli_version"
 
+    //JNA — native OS dialogs (Windows folder picker, etc.)
+    implementation "net.java.dev.jna:jna:5.14.0"
+    implementation "net.java.dev.jna:jna-platform:5.14.0"
+
     //json
     implementation "org.json:json:20240303"
 

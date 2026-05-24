@@ -42,7 +42,20 @@ class Git(val repo: String) {
     fun fetch()    = git("fetch", "--all", "--prune")
     fun branches() = git("branch", "--all", "-vv")
     fun tags()     = git("tag", "--list")
-    fun log()      = git("--no-pager", "log", "--all", "--pretty=format:%H %P")
+    /**
+     * Returns one record per commit.
+     * Format (fields separated by , records separated by ):
+     *   hash | parentHashes | shortHash | author | authorDateUnix
+     *       | committer | committerDateUnix | subject
+     *
+     * Using ASCII control chars as delimiters avoids conflicts with content.
+     * Parsed by RepoTab.applyCommits() to pre-populate Commit metadata
+     * without per-commit git-show calls on the EDT.
+     */
+    fun log() = git(
+        "--no-pager", "log", "--all", "--date=unix",
+        "--pretty=format:%x1E%H%x1F%P%x1F%h%x1F%aN <%aE>%x1F%ad%x1F%cN <%cE>%x1F%cd%x1F%s"
+    )
     fun diff(path: String? = null) = if (path != null) git("--no-pager", "diff", "--", path) else git("--no-pager", "diff")
     fun diffStaged(path: String? = null) = if (path != null) git("--no-pager", "diff", "--cached", "--", path) else git("--no-pager", "diff", "--cached")
     fun remoteUrl(remote: String = "origin") = git("config", "--get", "remote.$remote.url")
