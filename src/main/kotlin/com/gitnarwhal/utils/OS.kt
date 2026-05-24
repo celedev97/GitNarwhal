@@ -1,12 +1,8 @@
 package com.gitnarwhal.utils
 
 import com.gitnarwhal.backend.Git
-import com.gitnarwhal.utils.Command
-import tornadofx.*
-import java.lang.Exception
 import java.nio.file.Files
 import java.nio.file.Path
-import javax.swing.JOptionPane
 
 enum class OS{
     WINDOWS,
@@ -14,7 +10,7 @@ enum class OS{
     MAC;
 
     companion object{
-        val CURRENT = with(System.getProperty("os.name").toLowerCase()){
+        val CURRENT = with(System.getProperty("os.name").lowercase()){
             when{
                 containsOne("win") -> WINDOWS
                 containsOne("nix","nux","aix") -> LINUX
