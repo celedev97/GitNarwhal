@@ -82,16 +82,17 @@ class Command(vararg command: String, path: String = "./") {
 
 
     companion object{
-        fun find(command: String): Command?{
-            var output: Command? = null
-
-            val where = Command(OS.WHERE, "git").execute()
-            if(where.success && where.output.isNotEmpty() && File(where.output.lines()[0]).exists()){
-                output = Command()
-                output.commandParts.add(where.output.lines()[0])
+        fun find(command: String): Command? {
+            val where = Command(OS.WHERE, command).execute()
+            if (where.success && where.output.isNotEmpty()) {
+                val firstLine = where.output.lines().firstOrNull()?.trim().orEmpty()
+                if (firstLine.isNotEmpty() && File(firstLine).exists()) {
+                    val resolved = Command()
+                    resolved.commandParts.add(firstLine)
+                    return resolved
+                }
             }
-
-            return output
+            return null
         }
     }
 
