@@ -1,34 +1,52 @@
 package com.gitnarwhal
 
+import com.formdev.flatlaf.themes.FlatMacDarkLaf
 import com.gitnarwhal.backend.Git
 import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.views.MainView
-import javafx.application.Application
-import javafx.scene.image.Image
-import javafx.stage.Stage
-import tornadofx.*
-
+import java.awt.Dimension
 import java.util.jar.Manifest
+import javax.swing.ImageIcon
+import javax.swing.JFrame
+import javax.swing.SwingUtilities
+import javax.swing.UIManager
 
-fun main(){
-    Application.launch(GitNarwhal::class.java)
+fun main() {
+    // FlatLaf must be installed before any Swing component is created
+    try {
+        UIManager.setLookAndFeel(FlatMacDarkLaf())
+    } catch (e: Exception) {
+        System.err.println("Failed to install FlatLaf: ${e.message}")
+    }
+
+    SwingUtilities.invokeLater { startApp() }
 }
 
-class GitNarwhal : App(MainView::class) {
-    override fun start(stage: Stage) {
-        importStylesheet(GitNarwhal::class.java.getResource("/stylesheets/dark/global.css").toExternalForm())
-        stage.icons.add(Image(GitNarwhal::class.java.getResourceAsStream("/icon.png")));
-
-        //checking updates
-        if(Settings.autoUpdate){
-            val manifestAttributes = Manifest(GitNarwhal::class.java.classLoader?.getResource("META-INF/MANIFEST.MF")?.openStream()).mainAttributes;
-            val version = manifestAttributes.getValue("Specification-Version")
-            println("Running GitNarwhal v$version")
+private fun startApp() {
+    if (Settings.autoUpdate) {
+        try {
+            val manifestStream = ClassLoader.getSystemResourceAsStream("META-INF/MANIFEST.MF")
+            if (manifestStream != null) {
+                val attrs = Manifest(manifestStream).mainAttributes
+                val version = attrs.getValue("Specification-Version")
+                println("Running GitNarwhal v$version")
+            }
+        } catch (e: Exception) {
+            // not packaged as jar — fine
         }
-
-        //ensuring Git Presence
-        println("Git location = \"${Git.GIT}\"")
-
-        super.start(stage)
     }
+
+    println("Git location = \"${Git.GIT}\"")
+
+    val frame = JFrame("GitNarwhal")
+    frame.defaultCloseOperation = JFrame.EXIT_ON_CLOSE
+    frame.preferredSize = Dimension(1280, 800)
+
+    val iconStream = ClassLoader.getSystemResourceAsStream("icon.png")
+    if (iconStream != null) frame.iconImage = ImageIcon(iconStream.readAllBytes()).image
+
+    frame.contentPane = MainView()
+    frame.pack()
+    frame.setLocationRelativeTo(null)
+    frame.isVisible = true
 }
