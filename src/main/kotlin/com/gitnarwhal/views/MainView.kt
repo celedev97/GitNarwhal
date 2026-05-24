@@ -1,5 +1,6 @@
 package com.gitnarwhal.views
 
+import com.gitnarwhal.utils.NativeFileChooser
 import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.utils.save
 import com.gitnarwhal.utils.toPath
@@ -24,13 +25,13 @@ class MainView : JPanel(BorderLayout()) {
 
     init {
         // FlatLaf close buttons on every tab.
-        // We veto closing the "+" sentinel tab inside the callback.
+        // Callback type MUST be IntConsumer (not BiConsumer) — FlatLaf checks instanceof.
         tabPane.putClientProperty("JTabbedPane.tabsClosable", true)
         tabPane.putClientProperty(
             "JTabbedPane.tabCloseCallback",
-            java.util.function.BiConsumer<JTabbedPane, Int> { tp, idx ->
-                if (tp.getTitleAt(idx) == PLUS_TITLE) return@BiConsumer
-                val comp = tp.getComponentAt(idx) as? JPanel ?: return@BiConsumer
+            java.util.function.IntConsumer { idx ->
+                if (tabPane.getTitleAt(idx) == PLUS_TITLE) return@IntConsumer
+                val comp = tabPane.getComponentAt(idx) as? JPanel ?: return@IntConsumer
                 closeTab(comp)
             }
         )
@@ -131,12 +132,12 @@ class MainView : JPanel(BorderLayout()) {
     }
 
     /**
-     * Shows a directory picker immediately and opens the chosen repo as a RepoTab.
+     * Shows a native directory picker and opens the chosen repo as a RepoTab.
      * Called from File > Open Repository…
      */
     fun openRepositoryFromPicker() {
         val win = SwingUtilities.getWindowAncestor(this)
-        val dir = chooseDirectory(win, "Open Repository") ?: return
+        val dir = NativeFileChooser.chooseDirectory(win, "Open Repository") ?: return
         val repo = RepoTab(dir.absolutePath, dir.name)
         addTab(repo)
         selectTab(repo)
@@ -144,28 +145,5 @@ class MainView : JPanel(BorderLayout()) {
 
     companion object {
         const val PLUS_TITLE = "+"
-
-        /**
-         * Cross-platform directory picker.
-         * Uses native FileDialog (macOS), JFileChooser elsewhere.
-         */
-        fun chooseDirectory(parent: java.awt.Window?, title: String = "Select Folder"): File? {
-            val os = System.getProperty("os.name", "").lowercase()
-            if (os.contains("mac")) {
-                System.setProperty("apple.awt.fileDialogForDirectories", "true")
-                val frame = parent as? java.awt.Frame
-                val fd = java.awt.FileDialog(frame, title, java.awt.FileDialog.LOAD)
-                fd.isVisible = true
-                System.clearProperty("apple.awt.fileDialogForDirectories")
-                return if (fd.file != null) File(fd.directory, fd.file) else null
-            }
-            val chooser = JFileChooser().apply {
-                fileSelectionMode    = JFileChooser.DIRECTORIES_ONLY
-                dialogTitle          = title
-                isAcceptAllFileFilterUsed = false
-            }
-            return if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION)
-                chooser.selectedFile else null
-        }
     }
 }
