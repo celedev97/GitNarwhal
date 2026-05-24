@@ -3,67 +3,118 @@ package com.gitnarwhal.backend
 import com.gitnarwhal.utils.Command
 import com.gitnarwhal.utils.GitDownloader
 import com.gitnarwhal.utils.OS
-import com.gitnarwhal.backend.Git.Companion
 
 class Git(val repo: String) {
-    companion object{
-        private val INTERNAL_GIT = "./git/bin/git${OS.EXE}"
+    companion object {
+        private const val INTERNAL_GIT = "./git/bin/git"
 
-        private var WHERE = Command.find("git")
-            private set
+        private val WHERE = Command.find("git")
 
-        val GIT:String = when{
-            //if the where/which command gives a result then git is in PATH
+        val GIT: String = when {
+            //if where/which gives a result then git is in PATH
             WHERE != null -> WHERE.toString()
 
-            //if the internal git exists than that's the git path
-            java.io.File(INTERNAL_GIT).exists() -> INTERNAL_GIT
+            //if the internal git exists, use that
+            java.io.File(INTERNAL_GIT + OS.EXE).exists() -> INTERNAL_GIT + OS.EXE
 
-            //if neither are true then i need to download git
-            else -> when(OS.CURRENT){
-                OS.WINDOWS -> run {
-                    GitDownloader.downloadWindowsGit();
-                    INTERNAL_GIT
-                };
-                OS.LINUX   -> GitDownloader.downloadLinuxGit();
-                OS.MAC     -> GitDownloader.downloadMacGit();
+            //otherwise download it
+            else -> when (OS.CURRENT) {
+                OS.WINDOWS -> { GitDownloader.downloadWindowsGit(); INTERNAL_GIT + OS.EXE }
+                OS.LINUX   -> GitDownloader.downloadLinuxGit()
+                OS.MAC     -> GitDownloader.downloadMacGit()
             }
-        };
+        }
     }
 
-    private fun git(vararg command:String, prependGit: Boolean = true) : Command{
+    private fun git(vararg command: String, prependGit: Boolean = true): Command {
         var realCommand = command
-        if(prependGit){
+        if (prependGit) {
             val list = realCommand.toMutableList()
-            list.add(0,GIT)
+            list.add(0, GIT)
             realCommand = list.toTypedArray()
         }
-
         return Command(*realCommand, path = repo).execute()
     }
 
-    fun status() = git("status")
-
-    fun fetch() = git("fetch")
-
-    fun branches() = git("branch","--all","-vv")
-
-    fun selectBranch(branch: String) = git("checkout",branch)
-
-    fun add(fileName: String) = git("add", fileName)
-
-    fun restore(fileName: String) = git("restore", fileName)
-
-    fun log() = git("--no-pager", "log", "--pretty=format:%H %P")
-
-    // Commit, short commit, short parents, author name, autor email, author date, commit date, committer name,commit message
-    // flags: %H, %h, %p, %an, %ae, %ad, %cn, %s   "%H%n%h%n%cN <%cE>%n%cd%n%s"
-    fun show(commit:Commit) = show(commit.hash)
-    fun show(commitHash:String) =
-            git("--no-pager", "show", commitHash ,"-s",
-            "--pretty=format:"+arrayOf("%h", "%aN <%aE>", "%ad", "%cN <%cE>", "%cd", "%s","%b").joinToString("%n"),
-            "--date=unix")
-
+    //region read
+    fun status()   = git("status", "--porcelain=v1", "-b")
+    fun statusReadable() = git("status")
+    fun fetch()    = git("fetch", "--all", "--prune")
+    fun branches() = git("branch", "--all", "-vv")
+    fun tags()     = git("tag", "--list")
+    fun log()      = git("--no-pager", "log", "--all", "--pretty=format:%H %P")
+    fun diff(path: String? = null) = if (path != null) git("--no-pager", "diff", "--", path) else git("--no-pager", "diff")
+    fun diffStaged(path: String? = null) = if (path != null) git("--no-pager", "diff", "--cached", "--", path) else git("--no-pager", "diff", "--cached")
     fun remoteUrl(remote: String = "origin") = git("config", "--get", "remote.$remote.url")
 
+    fun show(commit: Commit) = show(commit.hash)
+    fun show(commitHash: String) =
+        git("--no-pager", "show", commitHash, "-s",
+            "--pretty=format:" + arrayOf("%h", "%aN <%aE>", "%ad", "%cN <%cE>", "%cd", "%s", "%b").joinToString("%n"),
+            "--date=unix")
+    //endregion
+
+    //region branch / checkout
+    fun selectBranch(branch: String)        = git("checkout", branch)
+    fun createBranch(branch: String)        = git("checkout", "-b", branch)
+    fun deleteBranch(branch: String, force: Boolean = false) =
+        if (force) git("branch", "-D", branch) else git("branch", "-d", branch)
+    fun renameBranch(old: String, new: String) = git("branch", "-m", old, new)
+    //endregion
+
+    //region staging
+    fun add(fileName: String)     = git("add", "--", fileName)
+    fun addAll()                  = git("add", "-A")
+    fun restore(fileName: String) = git("restore", "--", fileName)
+    fun unstage(fileName: String) = git("restore", "--staged", "--", fileName)
+    //endregion
+
+    //region commit / sync
+    fun commit(message: String)   = git("commit", "-m", message)
+    fun commitAmend(message: String? = null) =
+        if (message != null) git("commit", "--amend", "-m", message) else git("commit", "--amend", "--no-edit")
+
+    fun push(remote: String = "origin", branch: String? = null, force: Boolean = false): Command {
+        val parts = mutableListOf("push", remote)
+        if (branch != null) parts += branch
+        if (force) parts += "--force-with-lease"
+        return git(*parts.toTypedArray())
+    }
+
+    fun pull(remote: String = "origin", branch: String? = null, rebase: Boolean = false): Command {
+        val parts = mutableListOf("pull")
+        if (rebase) parts += "--rebase"
+        parts += remote
+        if (branch != null) parts += branch
+        return git(*parts.toTypedArray())
+    }
+
+    fun merge(branch: String)  = git("merge", branch)
+    fun rebase(onto: String)   = git("rebase", onto)
+    fun rebaseAbort()          = git("rebase", "--abort")
+    fun rebaseContinue()       = git("rebase", "--continue")
+    fun cherryPick(hash: String) = git("cherry-pick", hash)
+    fun revert(hash: String)   = git("revert", "--no-edit", hash)
+    fun reset(target: String, mode: String = "mixed") = git("reset", "--$mode", target)
+    //endregion
+
+    //region stash / tag
+    fun stashList()                       = git("stash", "list")
+    fun stashPush(message: String? = null) =
+        if (message != null) git("stash", "push", "-m", message) else git("stash", "push")
+    fun stashPop(index: Int = 0)          = git("stash", "pop", "stash@{$index}")
+    fun stashDrop(index: Int = 0)         = git("stash", "drop", "stash@{$index}")
+    fun stashApply(index: Int = 0)        = git("stash", "apply", "stash@{$index}")
+
+    fun tagCreate(name: String, message: String? = null) =
+        if (message != null) git("tag", "-a", name, "-m", message) else git("tag", name)
+    fun tagDelete(name: String) = git("tag", "-d", name)
+    //endregion
+
+    //region init / clone (static-style helpers — no repo context required)
+    object Static {
+        fun init(path: String) = Command(GIT, "init", path = path).execute()
+        fun clone(url: String, dest: String) = Command(GIT, "clone", url, dest).execute()
+    }
+    //endregion
 }
