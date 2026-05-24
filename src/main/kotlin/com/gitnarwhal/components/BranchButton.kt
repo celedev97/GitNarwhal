@@ -9,10 +9,10 @@ import javax.swing.JLabel
 import javax.swing.SwingConstants
 
 class BranchButton(
-    val name: String,
+    val branchName: String,
     repo: RepoTab,
     selected: Boolean = false
-) : JLabel(name, SwingConstants.LEFT) {
+) : JLabel(branchName, SwingConstants.LEFT) {
 
     var selected: Boolean = false
         set(value) {
@@ -32,8 +32,8 @@ class BranchButton(
         addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount == 2) {
-                    if (repo.git.selectBranch(name).success) {
-                        println("CHECKOUT: $name")
+                    if (repo.git.selectBranch(branchName).success) {
+                        println("CHECKOUT: $branchName")
                         repo.refreshBranches()
                     }
                 }
