@@ -66,7 +66,7 @@ private fun buildMenuBar(frame: JFrame, mainView: MainView): JMenuBar {
     }
     val openRepo = JMenuItem("Open Repository…").apply {
         accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_O, java.awt.Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-        addActionListener { mainView.addNewOpenTab() }
+        addActionListener { mainView.openRepositoryFromPicker() }
     }
     val quit = JMenuItem("Quit").apply {
         accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_Q, java.awt.Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
