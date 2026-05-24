@@ -1,92 +1,106 @@
 package com.gitnarwhal.views
 
-
-import com.gitnarwhal.backend.Git
 import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.utils.save
 import com.gitnarwhal.utils.toPath
-import javafx.collections.ListChangeListener
-import javafx.collections.ObservableList
-import javafx.scene.Parent
-import javafx.scene.control.Tab
-import javafx.scene.control.TabPane
-import javafx.scene.control.skin.TabPaneSkin
 import org.json.JSONObject
-import tornadofx.*
-import java.lang.Exception
+import java.awt.BorderLayout
 import java.nio.file.Files
-import java.nio.file.Path
+import javax.swing.*
+import javax.swing.event.ChangeListener
 
-class MainView : View() {
-    override val root:Parent by fxml(null as String?, true)
-    val tabPane :TabPane by fxid()
+class MainView : JPanel(BorderLayout()) {
 
-    private var moving = false;
-
-    val plusTab:Tab by fxid()
+    val tabPane = JTabbedPane()
 
     init {
-        plusTab.whenSelected { addNewCloneTab() }
+        add(tabPane, BorderLayout.CENTER)
 
         //region loading last open tabs
-        try{
-            val toRemove = arrayListOf<JSONObject>();
-            for(tab in Settings.openTabs.map { it as JSONObject }){
+        try {
+            val toRemove = arrayListOf<JSONObject>()
+            for (tab in Settings.openTabs.map { it as JSONObject }) {
                 val path = tab.getString("path").toPath()
                 val name = tab.getString("name")
-                if(Files.isDirectory(path)){
-                    addTab(RepoTab(path.toAbsolutePath().toString(), name), false)
-                }else{
+                if (Files.isDirectory(path)) {
+                    addTab(RepoTab(path.toAbsolutePath().toString(), name), save = false)
+                } else {
                     toRemove.add(tab)
                 }
             }
             Settings.openTabs.removeAll { toRemove.contains(it as JSONObject) }
-        }catch (ignored:Exception){
+        } catch (ignored: Exception) {
             println("Open tabs loading error")
             Settings.openTabs.removeAll { true }
         }
         Settings.save()
         //endregion
 
-        if(Settings.openTabs.isEmpty){
+        addPlusTab()
+
+        if (tabPane.tabCount == 1) {
+            // only the "+" tab — open a fresh Add/Clone tab
             addNewCloneTab()
         }
 
-        selectTab(tabPane.tabs.first())
+        tabPane.selectedIndex = 0
 
+        tabPane.addChangeListener(ChangeListener {
+            val idx = tabPane.selectedIndex
+            if (idx >= 0 && tabPane.getTitleAt(idx) == PLUS_TITLE) {
+                SwingUtilities.invokeLater { addNewCloneTab() }
+            }
+        })
     }
 
-    fun addTab(tab:Tab) =  tabPane.tabs.add(tabPane.tabs.size-1, tab)
-    fun closeTab(tab: Tab) = tabPane.tabs.remove(tab)
-    fun selectTab(tab: Tab) = tabPane.selectionModel.select(tab)
-    fun selectTab(repo: RepoTab) = tabPane.selectionModel.select(repo.tab)
+    private fun addPlusTab() {
+        // sentinel "+" tab as the last tab; selecting it spawns a new AddCloneTab
+        tabPane.addTab(PLUS_TITLE, JPanel())
+    }
 
-    fun addTab(repo:RepoTab, save:Boolean = true){
-        addTab(repo.tab)
-
-        repo.tab.setOnClosed {
-            Settings.openTabs.removeAll { (it as JSONObject).getString("path") == repo.path }
-            Settings.save()
+    fun addTab(panel: JPanel, title: String) {
+        val insertAt = (tabPane.tabCount - 1).coerceAtLeast(0)
+        // if "+" tab not yet present (init time), append at end
+        val plusIdx = (0 until tabPane.tabCount).indexOfFirst { tabPane.getTitleAt(it) == PLUS_TITLE }
+        if (plusIdx < 0) {
+            tabPane.addTab(title, panel)
+        } else {
+            tabPane.insertTab(title, null, panel, null, plusIdx)
         }
+        tabPane.selectedComponent = panel
+    }
 
-        if(save){
-            Settings.openTabs.put(
-                    with(JSONObject()){
-                        put("name", repo.tab.text)
-                        put("path", repo.path)
-                        this
-                    }
-            )
+    fun addTab(repo: RepoTab, save: Boolean = true) {
+        addTab(repo, repo.tabTitle)
+
+        if (save) {
+            Settings.openTabs.put(JSONObject().apply {
+                put("name", repo.tabTitle)
+                put("path", repo.path)
+            })
             Settings.save()
         }
     }
 
-    fun addNewCloneTab() : AddCloneTab{
+    fun closeTab(component: JPanel) {
+        val idx = tabPane.indexOfComponent(component)
+        if (idx >= 0) {
+            tabPane.removeTabAt(idx)
+            if (component is RepoTab) {
+                Settings.openTabs.removeAll { (it as JSONObject).getString("path") == component.path }
+                Settings.save()
+            }
+        }
+    }
+
+    fun selectTab(component: JPanel) {
+        val idx = tabPane.indexOfComponent(component)
+        if (idx >= 0) tabPane.selectedIndex = idx
+    }
+
+    fun addNewCloneTab(): AddCloneTab {
         val newTab = AddCloneTab(this)
-
-        addTab(newTab.tab)
-        selectTab(newTab.tab)
-
+        addTab(newTab, newTab.tabTitle)
         return newTab
     }
 
@@ -95,5 +109,7 @@ class MainView : View() {
         newTab.switchTab(newTab.activateAddTab)
     }
 
+    companion object {
+        const val PLUS_TITLE = "+"
+    }
 }
-
