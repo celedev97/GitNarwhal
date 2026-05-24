@@ -1,6 +1,5 @@
 package com.gitnarwhal.utils
 
-import tornadofx.*
 import java.io.File
 import java.nio.file.Path
 
