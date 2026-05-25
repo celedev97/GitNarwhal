@@ -59,7 +59,15 @@ class Git(val repo: String) {
     fun diff(path: String? = null) = if (path != null) git("--no-pager", "diff", "--", path) else git("--no-pager", "diff")
     fun diffStaged(path: String? = null) = if (path != null) git("--no-pager", "diff", "--cached", "--", path) else git("--no-pager", "diff", "--cached")
     fun remoteUrl(remote: String = "origin") = git("config", "--get", "remote.$remote.url")
+    fun remoteList()                         = git("remote")
+    fun remoteAdd(name: String, url: String) = git("remote", "add", name, url)
+    fun remoteSetUrl(name: String, url: String) = git("remote", "set-url", name, url)
+    fun remoteRemove(name: String)           = git("remote", "remove", name)
     fun configGet(key: String)               = git("config", "--get", key)
+    fun configGetGlobal(key: String)         = git("config", "--global", "--get", key)
+    fun configSet(key: String, value: String) = git("config", key, value)
+    fun configSetGlobal(key: String, value: String) = git("config", "--global", key, value)
+    fun configUnset(key: String)             = git("config", "--unset", key)
 
     /** Number of local commits not yet pushed to upstream (returns "0" on failure). */
     fun unpushedCount() = git("rev-list", "--count", "@{u}..HEAD")
