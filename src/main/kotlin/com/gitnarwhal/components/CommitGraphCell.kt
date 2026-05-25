@@ -1,9 +1,9 @@
 package com.gitnarwhal.components
 
 import com.gitnarwhal.backend.Commit
+import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Component
-import java.awt.Dimension
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
@@ -12,6 +12,12 @@ import javax.swing.table.DefaultTableCellRenderer
 
 class CommitGraphCell : DefaultTableCellRenderer() {
 
+    companion object {
+        const val LANE_W   = 14   // pixels per lane
+        const val DOT_R    = 4    // commit dot radius
+        const val H_OFFSET = 8    // left margin
+    }
+
     private var commit: Commit? = null
 
     override fun getTableCellRendererComponent(
@@ -19,7 +25,6 @@ class CommitGraphCell : DefaultTableCellRenderer() {
     ): Component {
         super.getTableCellRendererComponent(table, "", isSelected, hasFocus, row, column)
         commit = value as? Commit
-        preferredSize = Dimension(80, table.rowHeight)
         return this
     }
 
@@ -29,11 +34,35 @@ class CommitGraphCell : DefaultTableCellRenderer() {
         val g2 = g.create() as Graphics2D
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            val cy = height / 2
-            val cx = 20 + (c.x.coerceAtLeast(0) * 16)
-            val r  = 5
-            g2.color = if (background == foreground) Color.GRAY else foreground
-            g2.fillOval(cx - r, cy - r, r * 2, r * 2)
+            g2.stroke = BasicStroke(1.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+
+            val mid  = height / 2
+            val dotX = H_OFFSET + c.x * LANE_W
+
+            // Top half — vertical lines for lanes active above this row
+            for ((lane, color) in c.graphTopLines) {
+                g2.color = color
+                g2.drawLine(H_OFFSET + lane * LANE_W, 0, H_OFFSET + lane * LANE_W, mid)
+            }
+
+            // Bottom half — vertical lines for lanes active below this row
+            for ((lane, color) in c.graphBottomLines) {
+                g2.color = color
+                g2.drawLine(H_OFFSET + lane * LANE_W, mid, H_OFFSET + lane * LANE_W, height)
+            }
+
+            // Fork/merge lines — diagonals from the commit dot to parent lanes (bottom half)
+            for ((parentLane, color) in c.graphForkLines) {
+                g2.color = color
+                g2.drawLine(dotX, mid, H_OFFSET + parentLane * LANE_W, height)
+            }
+
+            // Commit dot — draw on top of lines
+            g2.color = c.color
+            g2.fillOval(dotX - DOT_R, mid - DOT_R, DOT_R * 2, DOT_R * 2)
+            g2.color = c.color.darker()
+            g2.stroke = BasicStroke(1f)
+            g2.drawOval(dotX - DOT_R, mid - DOT_R, DOT_R * 2, DOT_R * 2)
         } finally {
             g2.dispose()
         }
