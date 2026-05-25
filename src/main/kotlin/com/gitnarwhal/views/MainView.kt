@@ -6,6 +6,9 @@ import com.gitnarwhal.utils.save
 import com.gitnarwhal.utils.toPath
 import org.json.JSONObject
 import java.awt.BorderLayout
+import java.awt.Color
+import java.awt.Dimension
+import java.awt.FlowLayout
 import java.io.File
 import java.nio.file.Files
 import javax.swing.*
@@ -24,18 +27,6 @@ class MainView : JPanel(BorderLayout()) {
     @Volatile private var suppressTabChange = false
 
     init {
-        // FlatLaf close buttons on every tab.
-        // Callback type MUST be IntConsumer (not BiConsumer) — FlatLaf checks instanceof.
-        tabPane.putClientProperty("JTabbedPane.tabsClosable", true)
-        tabPane.putClientProperty(
-            "JTabbedPane.tabCloseCallback",
-            java.util.function.IntConsumer { idx ->
-                if (tabPane.getTitleAt(idx) == PLUS_TITLE) return@IntConsumer
-                val comp = tabPane.getComponentAt(idx) as? JPanel ?: return@IntConsumer
-                closeTab(comp)
-            }
-        )
-
         add(tabPane, BorderLayout.CENTER)
 
         //region restore last-open tabs
@@ -86,12 +77,41 @@ class MainView : JPanel(BorderLayout()) {
 
     fun addTab(panel: JPanel, title: String) {
         val plusIdx = (0 until tabPane.tabCount).indexOfFirst { tabPane.getTitleAt(it) == PLUS_TITLE }
-        if (plusIdx < 0) {
-            tabPane.addTab(title, panel)
-        } else {
-            tabPane.insertTab(title, null, panel, null, plusIdx)
-        }
+        val insertIdx = if (plusIdx < 0) tabPane.tabCount else plusIdx
+        tabPane.insertTab(title, null, panel, null, insertIdx)
+        tabPane.setTabComponentAt(insertIdx, CloseableTabHeader(title, panel))
         tabPane.selectedComponent = panel
+    }
+
+    /** Custom tab header with an X close button. */
+    private inner class CloseableTabHeader(title: String, panel: JPanel) :
+        JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)) {
+
+        init {
+            isOpaque = false
+            border = BorderFactory.createEmptyBorder(0, 0, 0, 0)
+
+            add(JLabel(title).apply { border = BorderFactory.createEmptyBorder(0, 0, 0, 2) })
+
+            add(JButton("×").apply {
+                preferredSize     = Dimension(16, 16)
+                isBorderPainted   = false
+                isContentAreaFilled = false
+                isFocusPainted    = false
+                toolTipText       = "Close tab"
+                font              = font.deriveFont(12f)
+                foreground        = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+                addActionListener { closeTab(panel) }
+                addMouseListener(object : java.awt.event.MouseAdapter() {
+                    override fun mouseEntered(e: java.awt.event.MouseEvent) {
+                        foreground = UIManager.getColor("Label.foreground") ?: Color.WHITE
+                    }
+                    override fun mouseExited(e: java.awt.event.MouseEvent) {
+                        foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+                    }
+                })
+            })
+        }
     }
 
     fun addTab(repo: RepoTab, save: Boolean = true) {
