@@ -20,7 +20,7 @@ object Settings : JSONObject(settingsJSON) {
 
     var autoUpdate           by JSONSetting(true)
     var ignoredUpdateVersion by JSONSetting("")
-    var theme                by JSONSetting("classpath:/com/gitnarwhal/themes/nord.theme.json")
+    var theme                by JSONSetting("classpath:/com/gitnarwhal/themes/claude.theme.json")
 
     var openTabs             by JSONSetting(JSONArray())
     var recentRepos          by JSONSetting(JSONArray())

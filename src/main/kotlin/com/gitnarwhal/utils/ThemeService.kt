@@ -30,6 +30,7 @@ object ThemeService {
 
     /** Bundled themes shipped inside the jar. */
     private val bundledThemes: List<String> = listOf(
+        "$BUNDLED_THEMES_PACKAGE/claude.theme.json",
         "$BUNDLED_THEMES_PACKAGE/nord.theme.json",
         "$BUNDLED_THEMES_PACKAGE/gray.theme.json"
     )
