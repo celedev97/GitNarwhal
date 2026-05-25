@@ -4,19 +4,18 @@ import com.gitnarwhal.components.AddCloneTab.AddTab
 import com.gitnarwhal.components.AddCloneTab.CloneTab
 import com.gitnarwhal.components.AddCloneTab.CreateTab
 import com.gitnarwhal.utils.NativeFileChooser
-import com.gitnarwhal.utils.toPath
 import org.kordamp.ikonli.Ikon
 import org.kordamp.ikonli.materialdesign.MaterialDesign
 import org.kordamp.ikonli.swing.FontIcon
 import java.awt.BorderLayout
 import java.awt.CardLayout
 import java.awt.Color
+import java.awt.Component
 import java.awt.Dimension
 import java.awt.Graphics
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
-import java.awt.Insets
+import java.io.File
 import javax.swing.*
+import javax.swing.text.PlainDocument
 
 class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
 
@@ -37,16 +36,17 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
     val activateAddTab:    JButton get() = addBtn
     val activateCreateTab: JButton get() = createBtn
 
-    /** Shared path field — used by both Add and Create tabs. */
-    val sharedPathField = JTextField()
-    private val pathRow = buildPathRow()
+    /**
+     * Shared Document backing the path field in both Add and Create tabs.
+     * Both tabs hold a JTextField(sharedPathDoc) — same model, always in sync.
+     */
+    val sharedPathDoc = PlainDocument()
 
     init {
         container.add(cloneTab,  CARD_CLONE)
         container.add(addTab,    CARD_ADD)
         container.add(createTab, CARD_CREATE)
 
-        // ── Nav bar ───────────────────────────────────────────────────────────
         val navBar = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.X_AXIS)
             border = BorderFactory.createMatteBorder(0, 0, 1, 0,
@@ -58,15 +58,11 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
         navBar.add(createBtn)
         navBar.add(Box.createHorizontalGlue())
 
-        val north = JPanel(BorderLayout())
-        north.add(navBar,  BorderLayout.NORTH)
-        north.add(pathRow, BorderLayout.SOUTH)
-
         cloneBtn.addActionListener  { switchTo(CARD_CLONE) }
         addBtn.addActionListener    { switchTo(CARD_ADD) }
         createBtn.addActionListener { switchTo(CARD_CREATE) }
 
-        add(north,     BorderLayout.NORTH)
+        add(navBar,    BorderLayout.NORTH)
         add(container, BorderLayout.CENTER)
 
         switchTo(CARD_CLONE)
@@ -75,14 +71,22 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
     // ── Public API ────────────────────────────────────────────────────────────
 
     fun switchTab(buttonOrCard: Any) {
-        val card = when (buttonOrCard) {
+        switchTo(when (buttonOrCard) {
             cloneBtn  -> CARD_CLONE
             addBtn    -> CARD_ADD
             createBtn -> CARD_CREATE
             is String -> buttonOrCard
             else      -> CARD_CLONE
-        }
-        switchTo(card)
+        })
+    }
+
+    /** Opens native folder picker and writes result into sharedPathDoc. */
+    fun browseForPath(owner: Component, onPicked: (File) -> Unit = {}) {
+        val win = SwingUtilities.getWindowAncestor(owner)
+        val dir = NativeFileChooser.chooseDirectory(win, "Select Folder") ?: return
+        sharedPathDoc.remove(0, sharedPathDoc.length)
+        sharedPathDoc.insertString(0, dir.absolutePath, null)
+        onPicked(dir)
     }
 
     // ── Internal ──────────────────────────────────────────────────────────────
@@ -96,42 +100,6 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
             else        -> cloneBtn
         }
         listOf(cloneBtn, addBtn, createBtn).forEach { it.setNavSelected(it == active) }
-        pathRow.isVisible = card != CARD_CLONE
-        revalidate()
-    }
-
-    private fun buildPathRow(): JPanel {
-        val row = JPanel(GridBagLayout())
-        row.border = BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0,
-                UIManager.getColor("Separator.foreground") ?: Color(0x44_44_44)),
-            BorderFactory.createEmptyBorder(6, 12, 6, 12)
-        )
-
-        val gbc = GridBagConstraints().apply {
-            insets  = Insets(0, 4, 0, 4)
-            fill    = GridBagConstraints.HORIZONTAL
-            anchor  = GridBagConstraints.WEST
-        }
-
-        gbc.gridx = 0; gbc.weightx = 0.0
-        row.add(JLabel("Path:"), gbc)
-
-        gbc.gridx = 1; gbc.weightx = 1.0
-        row.add(sharedPathField, gbc)
-
-        gbc.gridx = 2; gbc.weightx = 0.0
-        val browseBtn = JButton("Browse…")
-        browseBtn.addActionListener {
-            val win = SwingUtilities.getWindowAncestor(this)
-            val dir = NativeFileChooser.chooseDirectory(win, "Select Folder") ?: return@addActionListener
-            sharedPathField.text = dir.absolutePath
-            addTab.nameField.text = dir.toPath().fileName?.toString() ?: ""
-        }
-        row.add(browseBtn, gbc)
-
-        row.isVisible = false
-        return row
     }
 
     // ── NavTabButton ──────────────────────────────────────────────────────────

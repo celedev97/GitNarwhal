@@ -6,62 +6,67 @@ import com.gitnarwhal.views.AddCloneTab
 import com.gitnarwhal.views.RepoTab
 import org.json.JSONObject
 import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.Dimension
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
-import java.awt.Insets
+import java.awt.Font
 import java.nio.file.Files
 import javax.swing.*
 
 class AddTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
 
-    val nameField = JTextField(28)
+    // path field backed by the shared document — stays in sync with CreateTab
+    private val pathField = JTextField(addCloneTab.sharedPathDoc, "", 0)
+    val nameField         = JTextField()
 
     init {
         isOpaque = false
 
-        // centred form card — fixed width, vertically near-top
-        val form = JPanel(GridBagLayout())
-        form.isOpaque = false
-        form.maximumSize = Dimension(480, Int.MAX_VALUE)
-
-        val gbc = GridBagConstraints().apply {
-            insets  = Insets(6, 6, 6, 6)
-            anchor  = GridBagConstraints.WEST
+        val form = JPanel().apply {
+            isOpaque = false
+            layout   = BoxLayout(this, BoxLayout.Y_AXIS)
         }
 
-        // row 0: Name label + field
-        gbc.gridx = 0; gbc.gridy = 0; gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0.0
-        form.add(JLabel("Name:"), gbc)
-        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
-        form.add(nameField, gbc)
+        // ── Title ─────────────────────────────────────────────────────────────
+        form.add(label("Add a repository", size = 26f, bold = true))
+        form.add(Box.createVerticalStrut(6))
+        form.add(label("Choose a working copy repository folder to add to GitNarwhal", size = 12f))
+        form.add(Box.createVerticalStrut(28))
 
-        // row 1: Open button — right-aligned, normal width
-        gbc.gridx = 1; gbc.gridy = 1
-        gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0.0
-        gbc.anchor = GridBagConstraints.EAST
-        val openBtn = JButton("Open Repository")
-        openBtn.addActionListener { run() }
-        form.add(openBtn, gbc)
+        // ── Path row ──────────────────────────────────────────────────────────
+        pathField.putClientProperty("JTextField.placeholderText", "Working Copy Path:")
+        val browseBtn = JButton("Browse")
+        browseBtn.addActionListener {
+            addCloneTab.browseForPath(this) { dir ->
+                nameField.text = dir.toPath().fileName?.toString() ?: ""
+            }
+        }
+        form.add(pathRow(pathField, browseBtn))
+        form.add(Box.createVerticalStrut(10))
 
-        // centre form horizontally with glue
-        val wrapper = JPanel()
-        wrapper.isOpaque = false
-        wrapper.layout = BoxLayout(wrapper, BoxLayout.X_AXIS)
-        wrapper.add(Box.createHorizontalGlue())
-        wrapper.add(form)
-        wrapper.add(Box.createHorizontalGlue())
+        // ── Name ──────────────────────────────────────────────────────────────
+        nameField.putClientProperty("JTextField.placeholderText", "Name:")
+        nameField.maximumSize = Dimension(Int.MAX_VALUE, nameField.preferredSize.height)
+        form.add(nameField)
+        form.add(Box.createVerticalStrut(20))
 
-        val outer = JPanel(BorderLayout())
-        outer.isOpaque = false
-        outer.border = BorderFactory.createEmptyBorder(24, 24, 24, 24)
-        outer.add(wrapper, BorderLayout.NORTH)
+        // ── Action button ─────────────────────────────────────────────────────
+        val addBtn = accentButton("Add")
+        addBtn.addActionListener { run() }
+        val btnRow = JPanel(BorderLayout()).apply { isOpaque = false }
+        btnRow.add(addBtn, BorderLayout.WEST)
+        form.add(btnRow)
 
+        // ── Outer wrapper with padding ────────────────────────────────────────
+        val outer = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            border   = BorderFactory.createEmptyBorder(40, 48, 40, 48)
+        }
+        outer.add(form, BorderLayout.NORTH)
         add(outer, BorderLayout.CENTER)
     }
 
     fun run() {
-        val pathText = addCloneTab.sharedPathField.text.trim()
+        val pathText = pathField.text.trim()
         if (!Files.isDirectory(pathText.toPath())) {
             JOptionPane.showMessageDialog(this, "The specified path is not a directory", "Error", JOptionPane.ERROR_MESSAGE)
             return
@@ -74,9 +79,29 @@ class AddTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
         with(addCloneTab.mainView) {
             val name = nameField.text.ifBlank { pathText.toPath().fileName?.toString() ?: pathText }
             val repo = RepoTab(pathText, name)
-            addTab(repo)
-            selectTab(repo)
-            closeTab(addCloneTab)
+            addTab(repo); selectTab(repo); closeTab(addCloneTab)
         }
     }
 }
+
+// ── Shared helpers (package-private) ─────────────────────────────────────────
+
+internal fun label(text: String, size: Float, bold: Boolean = false): JLabel =
+    JLabel(text).apply {
+        font      = font.deriveFont(if (bold) Font.BOLD else Font.PLAIN, size)
+        alignmentX = 0f
+    }
+
+internal fun pathRow(field: JTextField, browseBtn: JButton): JPanel {
+    field.maximumSize = Dimension(Int.MAX_VALUE, field.preferredSize.height)
+    val row = JPanel(BorderLayout(8, 0)).apply { isOpaque = false; maximumSize = Dimension(Int.MAX_VALUE, field.preferredSize.height + 2) }
+    row.add(field,     BorderLayout.CENTER)
+    row.add(browseBtn, BorderLayout.EAST)
+    return row
+}
+
+internal fun accentButton(text: String): JButton =
+    JButton(text).apply {
+        putClientProperty("FlatLaf.style",
+            "background: #1A6FBF; foreground: #FFFFFF; hoverBackground: #2078CC; pressedBackground: #155DA0")
+    }
