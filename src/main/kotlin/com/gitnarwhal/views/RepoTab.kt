@@ -10,6 +10,7 @@ import com.gitnarwhal.utils.OS
 import org.kordamp.ikonli.materialdesign.MaterialDesign
 import org.kordamp.ikonli.swing.FontIcon
 import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.FlowLayout
@@ -271,7 +272,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     private fun iconBtn(icon: org.kordamp.ikonli.Ikon, label: String, action: () -> Unit): JButton =
-        JButton(label, FontIcon.of(icon, 18)).apply {
+        JButton(label, FontIcon.of(icon, 18, UIManager.getColor("Label.foreground") ?: Color.DARK_GRAY)).apply {
             horizontalTextPosition = SwingConstants.CENTER
             verticalTextPosition   = SwingConstants.BOTTOM
             toolTipText            = label
