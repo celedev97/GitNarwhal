@@ -1,104 +1,87 @@
-on: push
+name: CI / CD
+
+on:
+  push:
+    branches: [ master ]
+    tags:     [ 'v*' ]
+  pull_request:
+
+permissions:
+  contents: write   # needed to create GitHub releases
 
 jobs:
-  #Unit test
+
+  # ── Tests ───────────────────────────────────────────────────────────────────
   test:
-    timeout-minutes: 10
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-    - name: Checkout the repo
-      uses: actions/checkout@v4
-    - name: Install JDK
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '21'
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
+      - uses: actions/checkout@v4
 
-    - name: Run tests
-      run: ./gradlew test --no-daemon
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
 
-  #Jar creation
-  jar:
-    if: github.ref == 'refs/heads/release'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Run tests
+        run: ./gradlew test --no-daemon
+
+  # ── Release (tags only) ─────────────────────────────────────────────────────
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+
     steps:
-    - name: Checkout the repo
-      uses: actions/checkout@v4
-    - name: Install JDK
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '21'
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
+      - uses: actions/checkout@v4
 
-    - name: Create Jar
-      run: ./gradlew shadowJar --no-daemon
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
 
-    - name: Upload JAR
-      uses: actions/upload-artifact@v4
-      with:
-        name: shadowJar
-        path: ./build/libs/gitnarwhal.jar
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/jre
+          key: ${{ runner.os }}-gradle-release-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-release-
 
-  #Native images per OS — built on matching runners
-  bundle:
-    if: github.ref == 'refs/heads/release'
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            task: linux64app
-            artifact: linux_x64_image
-            path: ./build/app/linux_x64
-          - os: windows-latest
-            task: win64app
-            artifact: windows_x64_image
-            path: ./build/app/windows_x64
-          - os: macos-latest
-            task: mac64app
-            artifact: mac_x64_image
-            path: ./build/app/mac_x64
-    runs-on: ${{ matrix.os }}
-    steps:
-    - name: Checkout the repo
-      uses: actions/checkout@v4
-    - name: Install JDK
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '21'
-    - name: Cache dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
+      - name: Derive version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-    - name: Bundle JAR with JRE and launcher script
-      run: ./gradlew ${{ matrix.task }} --stacktrace --no-daemon
+      - name: Build all platform bundles
+        run: |
+          ./gradlew \
+            -PappVersion=${{ steps.version.outputs.VERSION }} \
+            win64app linux64app mac64app \
+            --no-daemon --stacktrace
 
-    - name: Upload image
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.artifact }}
-        path: ${{ matrix.path }}
+      - name: Package bundles as ZIPs
+        run: |
+          cd build/app
+          zip -r ../../gitnarwhal-${{ steps.version.outputs.VERSION }}-windows-x64.zip  windows_x64/
+          zip -r ../../gitnarwhal-${{ steps.version.outputs.VERSION }}-linux-x64.zip    linux_x64/
+          zip -r ../../gitnarwhal-${{ steps.version.outputs.VERSION }}-mac-x64.zip      mac_x64/
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag:          ${{ github.ref_name }}
+          name:         ${{ github.ref_name }}
+          artifacts:    "gitnarwhal-*.zip"
+          generateReleaseNotes: true
+          prerelease:   false
+          token:        ${{ secrets.GITHUB_TOKEN }}

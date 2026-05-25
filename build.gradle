@@ -32,7 +32,7 @@ repositories {
 apply plugin: JREPackager
 
 mainClassName = "com.gitnarwhal.MainKt"
-version = "0.0.2"
+version = project.findProperty("appVersion") ?: "dev"
 
 jrePackager{
     jreVersion = project.ext.get("jreVersion")
@@ -79,6 +79,12 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+processResources {
+    filesMatching('version.properties') {
+        expand(appVersion: project.version)
+    }
 }
 //endregion
 
