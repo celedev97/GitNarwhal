@@ -752,7 +752,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         bar.addSeparator()
         bar.add(iconBtn(MaterialDesign.MDI_SETTINGS, "Settings") {
             val win = SwingUtilities.getWindowAncestor(this)
-            SettingsDialog(win as? java.awt.Frame).isVisible = true
+            RepoSettingsDialog(git, win).isVisible = true
         })
         return bar
     }
