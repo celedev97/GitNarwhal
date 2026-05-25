@@ -3,11 +3,11 @@ package com.gitnarwhal
 import com.gitnarwhal.backend.Git
 import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.utils.ThemeService
+import com.gitnarwhal.utils.UpdateService
 import com.gitnarwhal.views.MainView
 import com.gitnarwhal.views.SettingsDialog
 import java.awt.Dimension
 import java.awt.event.KeyEvent
-import java.util.jar.Manifest
 import javax.swing.ImageIcon
 import javax.swing.JFrame
 import javax.swing.JMenu
@@ -26,19 +26,7 @@ fun main() {
 }
 
 private fun startApp() {
-    if (Settings.autoUpdate) {
-        try {
-            val manifestStream = ClassLoader.getSystemResourceAsStream("META-INF/MANIFEST.MF")
-            if (manifestStream != null) {
-                val attrs = Manifest(manifestStream).mainAttributes
-                val version = attrs.getValue("Specification-Version")
-                println("Running GitNarwhal v$version")
-            }
-        } catch (e: Exception) {
-            // not packaged as jar — fine
-        }
-    }
-
+    println("GitNarwhal ${UpdateService.currentVersion}")
     println("Git location = \"${Git.GIT}\"")
 
     val frame = JFrame("GitNarwhal")
@@ -54,6 +42,8 @@ private fun startApp() {
     frame.pack()
     frame.setLocationRelativeTo(null)
     frame.isVisible = true
+
+    UpdateService.checkForUpdates(frame)
 }
 
 private fun buildMenuBar(frame: JFrame, mainView: MainView): JMenuBar {
