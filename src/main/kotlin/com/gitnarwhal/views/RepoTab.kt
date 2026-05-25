@@ -1066,7 +1066,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 when {
                     fpLane >= 0 && fpLane != col -> {
                         laneHashes[col] = null
-                        forkLines.add(fpLane to laneColors[fpLane])
+                        forkLines.add(fpLane to commit.color)  // use the branch's own color, not the ancestor's
                     }
                     fpLane < 0 -> laneHashes[col] = fp.hash
                     // fpLane == col: already correct
