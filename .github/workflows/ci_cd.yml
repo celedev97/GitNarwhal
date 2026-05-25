@@ -28,12 +28,12 @@ jobs:
           restore-keys: ${{ runner.os }}-gradle-
       - run: ./gradlew test --no-daemon
 
-  # ── Linux + Mac bundles (tag only) ─────────────────────────────────────────
-  build-linux-mac:
+  # ── Linux .deb (tag only) ───────────────────────────────────────────────────
+  build-linux:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -43,33 +43,97 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-            .gradle/jre
-          key: linux-gradle-jre-${{ hashFiles('**/*.gradle*') }}
-          restore-keys: linux-gradle-jre-
+          key: linux-gradle-${{ hashFiles('**/*.gradle*') }}
+          restore-keys: linux-gradle-
 
       - name: Derive version
         id: ver
         run: echo "V=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build Linux + Mac bundles
-        run: |
-          ./gradlew \
-            "-PappVersion=${{ steps.ver.outputs.V }}" \
-            linux64app mac64app \
-            --no-daemon
+      - name: Build shadow JAR
+        run: ./gradlew "-PappVersion=${{ steps.ver.outputs.V }}" shadowJar --no-daemon
 
-      - name: Package as ZIPs
+      - name: Create .deb
         run: |
-          cd build/app
-          zip -r "../../gitnarwhal-${{ steps.ver.outputs.V }}-linux-x64.zip"  linux_x64/
-          zip -r "../../gitnarwhal-${{ steps.ver.outputs.V }}-mac-x64.zip"    mac_x64/
+          jpackage \
+            --type deb \
+            --name gitnarwhal \
+            --app-version "${{ steps.ver.outputs.V }}" \
+            --input build/libs \
+            --main-jar gitnarwhal.jar \
+            --main-class com.gitnarwhal.MainKt \
+            --dest dist \
+            --icon src/main/resources/icon.png \
+            --linux-shortcut \
+            --linux-app-category "Development"
+
+      - name: Rename output
+        run: |
+          mv dist/gitnarwhal_${{ steps.ver.outputs.V }}_amd64.deb \
+             dist/gitnarwhal-${{ steps.ver.outputs.V }}-linux-x64.deb
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-mac-zips
-          path: gitnarwhal-*.zip
+          name: linux-deb
+          path: dist/gitnarwhal-*-linux-x64.deb
 
-  # ── Windows installer (tag only) ───────────────────────────────────────────
+  # ── macOS .dmg (tag only) ───────────────────────────────────────────────────
+  build-mac:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: mac-gradle-${{ hashFiles('**/*.gradle*') }}
+          restore-keys: mac-gradle-
+
+      - name: Derive version
+        id: ver
+        run: echo "V=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build shadow JAR
+        run: ./gradlew "-PappVersion=${{ steps.ver.outputs.V }}" shadowJar --no-daemon
+
+      - name: Convert icon to .icns
+        run: |
+          mkdir -p icon.iconset
+          for size in 16 32 64 128 256 512; do
+            sips -z $size $size src/main/resources/icon.png \
+              --out icon.iconset/icon_${size}x${size}.png
+          done
+          iconutil -c icns icon.iconset -o icon.icns
+
+      - name: Create .dmg
+        run: |
+          jpackage \
+            --type dmg \
+            --name GitNarwhal \
+            --app-version "${{ steps.ver.outputs.V }}" \
+            --input build/libs \
+            --main-jar gitnarwhal.jar \
+            --main-class com.gitnarwhal.MainKt \
+            --dest dist \
+            --icon icon.icns
+
+      - name: Rename output
+        run: |
+          mv "dist/GitNarwhal-${{ steps.ver.outputs.V }}.dmg" \
+             "dist/gitnarwhal-${{ steps.ver.outputs.V }}-mac-x64.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-dmg
+          path: dist/gitnarwhal-*-mac-x64.dmg
+
+  # ── Windows .exe installer (tag only) ──────────────────────────────────────
   build-windows:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
@@ -106,14 +170,10 @@ jobs:
           $dir = "build\innosetup"
           New-Item -ItemType Directory -Force $dir | Out-Null
 
-          # Copy bundle contents
           Copy-Item -Recurse "build\app\windows_x64\*" "$dir\"
-
-          # Copy Inno Setup script and icon
           Copy-Item "gradle\innosetup\inno.iss" "$dir\inno.iss"
           Copy-Item "gradle\innosetup\icon.ico"  "$dir\icon.ico"
 
-          # Inject version
           (Get-Content "$dir\inno.iss") `
             -replace '#define MyAppVersion "[^"]+"', "#define MyAppVersion `"$v`"" |
             Set-Content "$dir\inno.iss"
@@ -138,14 +198,16 @@ jobs:
 
   # ── GitHub Release ──────────────────────────────────────────────────────────
   release:
-    needs: [ build-linux-mac, build-windows ]
+    needs: [ build-linux, build-mac, build-windows ]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: linux-mac-zips,     path: dist }
+        with: { name: linux-deb,         path: dist }
       - uses: actions/download-artifact@v4
-        with: { name: windows-installer,  path: dist }
+        with: { name: mac-dmg,           path: dist }
+      - uses: actions/download-artifact@v4
+        with: { name: windows-installer, path: dist }
 
       - uses: ncipollo/release-action@v1
         with:
