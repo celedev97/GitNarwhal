@@ -303,13 +303,13 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val fileListSplit = JSplitPane(JSplitPane.VERTICAL_SPLIT, stagedPanel, unstagedPanel).apply {
             resizeWeight     = 0.4
             dividerLocation  = 160
-            minimumSize      = Dimension(200, 0)
+            minimumSize      = Dimension(320, 0)
         }
 
         // ── Top half: files | diff ────────────────────────────────────────────
         val topHalf = JSplitPane(JSplitPane.HORIZONTAL_SPLIT, fileListSplit, diffOuter).apply {
             resizeWeight    = 0.0
-            dividerLocation = 260
+            dividerLocation = 340
         }
 
         // ── Commit area (bottom) ──────────────────────────────────────────────
