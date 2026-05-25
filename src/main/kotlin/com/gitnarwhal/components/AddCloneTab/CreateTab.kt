@@ -12,7 +12,7 @@ import javax.swing.*
 
 class CreateTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
 
-    private val pathField = JTextField(addCloneTab.sharedPathDoc, "", 0)
+    internal val pathField = JTextField()
     val nameField         = JTextField()
 
     init {

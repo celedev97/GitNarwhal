@@ -15,7 +15,6 @@ import java.awt.Dimension
 import java.awt.Graphics
 import java.io.File
 import javax.swing.*
-import javax.swing.text.PlainDocument
 
 class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
 
@@ -36,11 +35,7 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
     val activateAddTab:    JButton get() = addBtn
     val activateCreateTab: JButton get() = createBtn
 
-    /**
-     * Shared Document backing the path field in both Add and Create tabs.
-     * Both tabs hold a JTextField(sharedPathDoc) — same model, always in sync.
-     */
-    val sharedPathDoc = PlainDocument()
+    // no shared doc — browseForPath sets text on both tab fields directly
 
     init {
         container.add(cloneTab,  CARD_CLONE)
@@ -90,8 +85,9 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
             override fun doInBackground() = NativeFileChooser.chooseDirectory(win, "Select Folder")
             override fun done() {
                 val dir = try { get() } catch (_: Exception) { return } ?: return
-                sharedPathDoc.remove(0, sharedPathDoc.length)
-                sharedPathDoc.insertString(0, dir.absolutePath, null)
+                // Set text directly on both fields — shared Document doesn't reliably repaint
+                addTab.pathField.text    = dir.absolutePath
+                createTab.pathField.text = dir.absolutePath
                 onPicked(dir)
             }
         }.execute()
