@@ -995,18 +995,26 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     private fun applyCommits(logOutput: String) {
-        val localMap  = LinkedHashMap<String, Commit>()
-        val localList = mutableListOf<Commit>()
+        val localMap      = LinkedHashMap<String, Commit>()
+        val localList     = mutableListOf<Commit>()
+        val parentHashMap = mutableMapOf<String, List<String>>()  // hash → parent hashes (for pass 2)
         for (record in logOutput.split('')) {
             val f = record.split('')
             if (f.size < 8) continue
             val hash = f[0].trim(); if (hash.isBlank()) continue
-            val parentHashes  = f[1].split(" ").filter { it.isNotBlank() }
+            // Pass 1: populate commit data; parent linking deferred to pass 2
             val commit = localMap.getOrPut(hash) { Commit(hash, this) }
             commit.prePopulate(listOf(f[2], f[3], f[4], f[5], f[6], f[7]))
             commit.refs = if (f.size > 8) parseRefs(f[8]) else emptyList()
-            parentHashes.mapNotNull { localMap[it] }
-                .forEach { p -> p.childs.add(commit); commit.parents.add(p) }
+            parentHashMap[hash] = f[1].split(" ").filter { it.isNotBlank() }
+        }
+        // Pass 2: link parents/children — ALL commits now in localMap, lookups succeed
+        for ((h, parentHashes) in parentHashMap) {
+            val commit = localMap[h] ?: continue
+            for (ph in parentHashes) {
+                val p = localMap[ph] ?: continue
+                if (p !in commit.parents) { commit.parents.add(p); p.childs.add(commit) }
+            }
         }
         // ── Topological sort (post-order DFS, newest first → y=0 = top row) ──
         var y = 0
