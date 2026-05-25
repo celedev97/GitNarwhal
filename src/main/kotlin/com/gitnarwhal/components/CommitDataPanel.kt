@@ -5,102 +5,110 @@ import com.gitnarwhal.backend.RefType
 import com.gitnarwhal.views.RepoTab
 import java.awt.BorderLayout
 import java.awt.Color
-import java.awt.Component
 import java.awt.Cursor
 import java.awt.FlowLayout
 import java.awt.Font
-import java.awt.datatransfer.StringSelection
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-import java.util.Date
+import java.time.format.FormatStyle
+import java.util.Locale
 import javax.swing.*
+import javax.swing.event.HyperlinkEvent
+import javax.swing.text.SimpleAttributeSet
+import javax.swing.text.StyleConstants
+import javax.swing.text.StyledDocument
 
 class CommitDataPanel(private val repo: RepoTab) : JPanel(BorderLayout()) {
 
-    private val contentPanel = JPanel().apply {
-        layout = BoxLayout(this, BoxLayout.Y_AXIS)
-        border = BorderFactory.createEmptyBorder(10, 12, 10, 12)
+    private val badgePanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
         isOpaque = false
+        border = BorderFactory.createEmptyBorder(4, 8, 0, 8)
+    }
+
+    // Single selectable text pane for all metadata + message
+    private val textPane = JTextPane().apply {
+        isEditable = false
+        border = BorderFactory.createEmptyBorder(6, 10, 8, 10)
+        isOpaque = false
+        putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, true)
+        font = Font(Font.MONOSPACED, Font.PLAIN, 12)
     }
 
     init {
         isOpaque = false
-        add(contentPanel, BorderLayout.NORTH)
+        val top = JPanel(BorderLayout()).apply { isOpaque = false }
+        top.add(badgePanel, BorderLayout.CENTER)
+        add(top, BorderLayout.NORTH)
+        add(textPane, BorderLayout.CENTER)
+
+        // Click on colored link spans (parent hashes)
+        textPane.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                val pos = textPane.viewToModel2D(e.point).toInt()
+                val attrs = textPane.styledDocument.getCharacterElement(pos).attributes
+                val href = attrs.getAttribute("linkHref") as? String ?: return
+                repo.selectCommit(href)
+            }
+        })
     }
 
     fun showCommit(commit: Commit) {
-        contentPanel.removeAll()
-
-        // ── 1. Hash row ───────────────────────────────────────────────────────
-        val hashRow = flowRow()
-        hashRow.add(hashChip(commit.shortHash))
-        hashRow.add(smallLabel(commit.hash))
-        hashRow.add(copyButton(commit.hash))
-        contentPanel.add(hashRow)
-        contentPanel.add(vgap(4))
-
-        // ── 2. Ref badges ─────────────────────────────────────────────────────
-        val visibleRefs = commit.refs.filter { it.type != RefType.HEAD }
+        // ── Ref badges ────────────────────────────────────────────────────────
+        badgePanel.removeAll()
         val headRef     = commit.refs.firstOrNull { it.type == RefType.HEAD }
-        if (commit.refs.isNotEmpty()) {
-            val refRow = flowRow()
-            if (headRef != null) refRow.add(refBadge("HEAD", Color(0xE5_73_73)))
-            visibleRefs.forEach { ref ->
-                val bg = when (ref.type) {
-                    RefType.LOCAL_BRANCH  -> Color(0x42_A5_F5)
-                    RefType.REMOTE_BRANCH -> Color(0x66_BB_6A)
-                    RefType.TAG           -> Color(0xFF_B3_00)
-                    else                  -> Color(0x78_78_78)
-                }
-                refRow.add(refBadge(ref.name, bg))
+        val visibleRefs = commit.refs.filter  { it.type != RefType.HEAD }
+        if (headRef != null) badgePanel.add(badge("HEAD", Color(0xE5_73_73)))
+        visibleRefs.forEach { ref ->
+            val bg = when (ref.type) {
+                RefType.LOCAL_BRANCH  -> Color(0x3E_C4_BD)
+                RefType.REMOTE_BRANCH -> Color(0x66_BB_6A)
+                RefType.TAG           -> Color(0xFF_B3_00)
+                else                  -> Color(0x78_78_78)
             }
-            contentPanel.add(refRow)
-            contentPanel.add(vgap(4))
+            badgePanel.add(badge(ref.name, bg))
         }
 
-        // ── 3. Commit title ───────────────────────────────────────────────────
-        contentPanel.add(vgap(4))
-        contentPanel.add(titleArea(commit.title))
-        contentPanel.add(vgap(6))
+        // ── Text pane: immediate metadata ────────────────────────────────────
+        val doc = textPane.styledDocument
+        doc.remove(0, doc.length)
 
-        // ── 4. Body placeholder (async filled) ───────────────────────────────
-        val bodyArea = bodyTextArea("")
-        contentPanel.add(bodyArea)
+        val bold   = boldAttr()
+        val normal = normalAttr()
+        val muted  = mutedAttr()
 
-        // ── 5. Separator ──────────────────────────────────────────────────────
-        contentPanel.add(vgap(8))
-        contentPanel.add(separator())
-        contentPanel.add(vgap(6))
-
-        // ── 6. Author / Committer ─────────────────────────────────────────────
-        val sameCommitter = commit.committer == commit.author && commit.committerDate == commit.authorDate
-        contentPanel.add(personRow("Authored by", commit.author, commit.authorDate))
-        if (!sameCommitter) {
-            contentPanel.add(vgap(2))
-            contentPanel.add(personRow("Committed by", commit.committer, commit.committerDate))
+        fun line(label: String, value: String) {
+            doc.insertString(doc.length, label,  bold)
+            doc.insertString(doc.length, value,  normal)
+            doc.insertString(doc.length, "\n",   normal)
         }
 
-        // ── 7. Parents ────────────────────────────────────────────────────────
-        if (commit.parents.isNotEmpty()) {
-            contentPanel.add(vgap(6))
-            val parentRow = flowRow()
-            parentRow.add(metaLabel("Parents:  "))
-            commit.parents.forEach { p ->
-                parentRow.add(hashLink(p.hash, p.shortHash))
-                parentRow.add(JLabel("  ").apply { isOpaque = false })
-            }
-            contentPanel.add(parentRow)
+        line("Commit:     ", "${commit.hash}  [${commit.shortHash}]")
+
+        // Parents — inserted as plain text (links added via HTML approach below)
+        doc.insertString(doc.length, "Parents:    ", bold)
+        commit.parents.forEachIndexed { i, p ->
+            if (i > 0) doc.insertString(doc.length, "  ", normal)
+            insertLink(doc, p.shortHash, p.hash)
+        }
+        doc.insertString(doc.length, "\n", normal)
+
+        line("Author:     ", commit.author)
+        line("Date:       ", formatDate(commit.authorDate))
+
+        if (commit.committer != commit.author) {
+            val committerName = commit.committer.substringBefore(" <").trim()
+            line("Committer:  ", committerName)
         }
 
-        contentPanel.revalidate()
-        contentPanel.repaint()
+        // title on its own line after a blank
+        doc.insertString(doc.length, "\n", normal)
+        doc.insertString(doc.length, commit.title + "\n", boldTitle())
 
-        // ── Async: fetch body ─────────────────────────────────────────────────
+        // Body — async
         object : SwingWorker<String, Void>() {
             override fun doInBackground(): String {
                 val result = repo.git.show(commit)
@@ -110,166 +118,88 @@ class CommitDataPanel(private val repo: RepoTab) : JPanel(BorderLayout()) {
             override fun done() {
                 val body = try { get() } catch (_: Exception) { return }
                 if (body.isNotBlank()) {
-                    (bodyArea as? JTextArea)?.let { ta ->
-                        ta.text = body
-                        ta.isVisible = true
-                    }
-                    contentPanel.revalidate()
-                    contentPanel.repaint()
+                    doc.insertString(doc.length, "\n" + body + "\n", mutedAttr())
                 }
+                badgePanel.revalidate(); badgePanel.repaint()
+                textPane.revalidate();   textPane.repaint()
+                textPane.caretPosition = 0
             }
         }.execute()
+
+        badgePanel.revalidate(); badgePanel.repaint()
+        textPane.revalidate();   textPane.repaint()
+        textPane.caretPosition = 0
     }
 
-    // ── Component builders ────────────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private fun hashChip(text: String): JLabel {
-        val accent = UIManager.getColor("Component.accentColor") ?: Color(0x4F_C3_F7)
-        return JLabel(" $text ").apply {
-            font       = Font(Font.MONOSPACED, Font.BOLD, 12)
-            foreground = Color.WHITE
-            background = accent
-            isOpaque   = true
-            border     = BorderFactory.createEmptyBorder(2, 6, 2, 6)
-        }
-    }
-
-    private fun smallLabel(text: String): JLabel =
-        JLabel(text).apply {
-            font       = Font(Font.MONOSPACED, Font.PLAIN, 11)
-            foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
-        }
-
-    private fun metaLabel(text: String): JLabel =
-        JLabel(text).apply {
-            font = font.deriveFont(Font.BOLD, 11f)
-            foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
-        }
-
-    private fun copyButton(hash: String): JLabel =
-        JLabel("⎘").apply {
-            font       = font.deriveFont(12f)
-            foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
-            cursor     = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            toolTipText = "Copy full hash"
-            addMouseListener(object : MouseAdapter() {
-                override fun mouseClicked(e: MouseEvent) {
-                    val sel = StringSelection(hash)
-                    java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(sel, sel)
-                }
-                override fun mouseEntered(e: MouseEvent) {
-                    foreground = UIManager.getColor("Label.foreground") ?: Color.WHITE
-                }
-                override fun mouseExited(e: MouseEvent) {
-                    foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
-                }
-            })
-        }
-
-    private fun refBadge(name: String, bg: Color): JLabel =
+    private fun badge(name: String, bg: Color): JLabel =
         JLabel(" $name ").apply {
             font       = font.deriveFont(Font.BOLD, 10f)
             foreground = Color.WHITE
             background = bg
             isOpaque   = true
-            border     = BorderFactory.createEmptyBorder(1, 5, 1, 5)
+            border     = BorderFactory.createEmptyBorder(1, 5, 2, 5)
         }
 
-    private fun titleArea(text: String): JTextArea =
-        JTextArea(text).apply {
-            font          = font.deriveFont(Font.BOLD, 13f)
-            isEditable    = false
-            lineWrap      = true
-            wrapStyleWord = true
-            isOpaque      = false
-            border        = BorderFactory.createEmptyBorder(0, 0, 0, 0)
-            alignmentX    = LEFT_ALIGNMENT
-            foreground    = UIManager.getColor("Label.foreground") ?: Color.WHITE
+    private fun insertLink(doc: StyledDocument, label: String, href: String) {
+        val accent = UIManager.getColor("Component.accentColor") ?: Color(0x3E_C4_BD)
+        val attrs = SimpleAttributeSet().apply {
+            StyleConstants.setForeground(this, accent)
+            StyleConstants.setUnderline(this, false)
+            StyleConstants.setBold(this, false)
+            StyleConstants.setFontFamily(this, Font.MONOSPACED)
+            StyleConstants.setFontSize(this, 12)
         }
-
-    private fun bodyTextArea(text: String): JTextArea =
-        JTextArea(text).apply {
-            font          = font.deriveFont(12f)
-            isEditable    = false
-            lineWrap      = true
-            wrapStyleWord = true
-            isOpaque      = false
-            border        = BorderFactory.createEmptyBorder(0, 0, 0, 0)
-            alignmentX    = LEFT_ALIGNMENT
-            foreground    = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
-            isVisible     = text.isNotBlank()
-        }
-
-    private fun personRow(label: String, person: String, rawDate: String): JPanel {
-        val row = flowRow()
-        row.add(metaLabel("$label  "))
-
-        // parse "Name <email>" — show name bold, email smaller
-        val emailMatch = Regex("""^(.*?)\s*<([^>]+)>$""").find(person)
-        if (emailMatch != null) {
-            val (name, email) = emailMatch.destructured
-            row.add(JLabel(name.trim()).apply { font = font.deriveFont(Font.BOLD, 12f) })
-            row.add(JLabel("  <$email>  ").apply {
-                font = font.deriveFont(11f)
-                foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
-            })
-        } else {
-            row.add(JLabel(person).apply { font = font.deriveFont(Font.BOLD, 12f) })
-        }
-        row.add(JLabel(formatDate(rawDate)).apply {
-            font = font.deriveFont(11f)
-            foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
-        })
-        return row
+        // Store href as attribute so click listener can read it
+        attrs.addAttribute("linkHref", href)
+        doc.insertString(doc.length, label, attrs)
     }
 
-    private fun hashLink(fullHash: String, label: String): JLabel =
-        JLabel(label).apply {
-            font       = Font(Font.MONOSPACED, Font.PLAIN, 11)
-            foreground = UIManager.getColor("Component.accentColor") ?: Color(0x4F_C3_F7)
-            cursor     = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            border     = BorderFactory.createLineBorder(
-                (UIManager.getColor("Component.accentColor") ?: Color(0x4F_C3_F7)).darker(), 1, true)
-            addMouseListener(object : MouseAdapter() {
-                override fun mouseClicked(e: MouseEvent) { repo.selectCommit(fullHash) }
-            })
-        }
+    private fun boldAttr(): SimpleAttributeSet = SimpleAttributeSet().apply {
+        StyleConstants.setBold(this, true)
+        StyleConstants.setFontFamily(this, Font.MONOSPACED)
+        StyleConstants.setFontSize(this, 12)
+        StyleConstants.setForeground(this,
+            UIManager.getColor("Label.foreground") ?: Color(0xE8_EA_F2))
+    }
 
-    private fun separator(): JSeparator =
-        JSeparator(SwingConstants.HORIZONTAL).apply {
-            alignmentX = LEFT_ALIGNMENT
-            maximumSize = java.awt.Dimension(Int.MAX_VALUE, 1)
-        }
+    private fun normalAttr(): SimpleAttributeSet = SimpleAttributeSet().apply {
+        StyleConstants.setBold(this, false)
+        StyleConstants.setFontFamily(this, Font.MONOSPACED)
+        StyleConstants.setFontSize(this, 12)
+        StyleConstants.setForeground(this,
+            UIManager.getColor("Label.foreground") ?: Color(0xE8_EA_F2))
+    }
 
-    private fun flowRow(): JPanel =
-        JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
-            alignmentX = LEFT_ALIGNMENT
-            isOpaque   = false
-        }
+    private fun mutedAttr(): SimpleAttributeSet = SimpleAttributeSet().apply {
+        StyleConstants.setBold(this, false)
+        StyleConstants.setFontFamily(this, Font.MONOSPACED)
+        StyleConstants.setFontSize(this, 12)
+        StyleConstants.setForeground(this,
+            UIManager.getColor("Label.disabledForeground") ?: Color(0x8B_8F_A8))
+    }
 
-    private fun vgap(h: Int): Component = Box.createVerticalStrut(h)
-
-    // ── Date formatting ───────────────────────────────────────────────────────
+    private fun boldTitle(): SimpleAttributeSet = SimpleAttributeSet().apply {
+        StyleConstants.setBold(this, true)
+        StyleConstants.setFontFamily(this, Font.SANS_SERIF)
+        StyleConstants.setFontSize(this, 13)
+        StyleConstants.setForeground(this,
+            UIManager.getColor("Label.foreground") ?: Color(0xE8_EA_F2))
+    }
 
     private val INPUT_FMT = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-    private val OUT_FMT   = DateTimeFormatter.ofPattern("MMM d, yyyy  HH:mm")
-                                .withZone(ZoneId.systemDefault())
+    private val OUT_FMT = DateTimeFormatter
+        .ofLocalizedDateTime(FormatStyle.FULL, FormatStyle.MEDIUM)
+        .withLocale(Locale.getDefault())
+        .withZone(ZoneId.systemDefault())
 
     private fun formatDate(raw: String): String {
         return try {
-            // raw is either "yyyy-MM-dd HH:mm:ss" (from GitShow) or a unix epoch string
             val epochSec = raw.toLongOrNull()
             val instant  = if (epochSec != null) Instant.ofEpochSecond(epochSec)
                            else INPUT_FMT.parse(raw).toInstant()
-            val now      = Instant.now()
-            val diffMin  = ChronoUnit.MINUTES.between(instant, now)
-            when {
-                diffMin < 1    -> "just now"
-                diffMin < 60   -> "$diffMin minutes ago"
-                diffMin < 1440 -> "${diffMin / 60} hours ago"
-                diffMin < 2880 -> "yesterday"
-                else           -> OUT_FMT.format(instant)
-            }
+            OUT_FMT.format(instant)
         } catch (_: Exception) { raw }
     }
 }
