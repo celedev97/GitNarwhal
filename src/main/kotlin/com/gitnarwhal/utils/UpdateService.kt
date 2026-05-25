@@ -19,7 +19,7 @@ import javax.swing.SwingWorker
 
 object UpdateService {
 
-    private const val GITHUB_OWNER = "fc-dev"
+    private const val GITHUB_OWNER = "celedev97"
     private const val GITHUB_REPO  = "GitNarwhal"
     private const val API_URL      =
         "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
