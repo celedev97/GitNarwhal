@@ -164,7 +164,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         commitTable.selectionModel.addListSelectionListener { e ->
             if (!e.valueIsAdjusting) {
                 val row = commitTable.selectedRow
-                if (row in commitList.indices) commitDataPanel.showCommit(commitList[row])
+                if (row in commitList.indices) {
+                    val c = commitList[row]
+                    if (c.hash == UNCOMMITTED_HASH) showFileStatus()
+                    else commitDataPanel.showCommit(c)
+                }
             }
         }
 
@@ -176,6 +180,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     companion object {
         private const val CARD_HISTORY     = "history"
         private const val CARD_FILE_STATUS = "fileStatus"
+
+        const val UNCOMMITTED_HASH = "0000000000000000000000000000000000000000"
 
         val GRAPH_PALETTE = listOf(
             Color(0x4F, 0xC3, 0xF7),  // sky blue
@@ -931,7 +937,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             override fun done() {
                 val snap = try { get() } catch (e: Exception) { return }
                 if (snap.branchOk) applyBranches(snap.branchesOut)
-                if (snap.logOk)    applyCommits(snap.logOut)
+                if (snap.logOk)    applyCommits(snap.logOut, snap.modifiedCount > 0)
                 applyStashes(snap.stashOut)
                 commitBtn.badge = snap.modifiedCount
                 pullBtn.badge   = snap.unpulledCount
@@ -999,7 +1005,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         current.add(DefaultMutableTreeNode(BranchInfo(path, segs.last(), active, tracking)))
     }
 
-    private fun applyCommits(logOutput: String) {
+    private fun applyCommits(logOutput: String, hasUncommitted: Boolean = false) {
         val localMap      = LinkedHashMap<String, Commit>()
         val localList     = mutableListOf<Commit>()
         val parentHashMap = mutableMapOf<String, List<String>>()  // hash → parent hashes (for pass 2)
@@ -1098,6 +1104,24 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             commit.graphTopLines    = topLines
             commit.graphBottomLines = bottomLines
             commit.graphForkLines   = forkLines
+        }
+
+        // ── Uncommitted-changes virtual node ─────────────────────────────────
+        if (hasUncommitted && localList.isNotEmpty()) {
+            val head = localList.first()
+            val virtual = Commit(UNCOMMITTED_HASH, this).apply {
+                prePopulate(listOf("", "", "", "", "", "Uncommitted changes"))
+                x     = head.x
+                y     = -1
+                color = Color.GRAY
+                refs  = head.refs                                    // move branch pills here
+                graphTopLines    = emptyList()
+                graphBottomLines = listOf(head.x to Color.GRAY)
+                graphForkLines   = emptyList()
+            }
+            head.refs          = emptyList()                         // pills moved to virtual
+            head.graphTopLines = head.graphTopLines + (head.x to Color.GRAY)
+            localList.add(0, virtual)
         }
 
         // ── Apply to table ────────────────────────────────────────────────────
