@@ -14,3 +14,6 @@ gradle-app.setting
 ### Gitnarwhal stuff ###
 git/
 gitnarwhal.json
+
+### Local notes ###
+TODO.md
