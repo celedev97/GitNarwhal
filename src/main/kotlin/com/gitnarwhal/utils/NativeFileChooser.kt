@@ -42,16 +42,21 @@ object NativeFileChooser {
     // No JNA structs, no COM, no AWT FileDialog quirks.
 
     private fun chooseWindows(title: String): File? = runCatching {
-        // Escape single quotes in title to avoid breaking the PS string literal
+        // Use OpenFileDialog as a folder picker — gives the modern Explorer-style
+        // dialog. ValidateNames=false + CheckFileExists=false lets the user
+        // "open" a folder by typing its name; the real selection is the directory
+        // part of the returned path.
         val safeTitle = title.replace("'", "''")
         val script = """
             Add-Type -AssemblyName System.Windows.Forms
-            ${'$'}d = New-Object System.Windows.Forms.FolderBrowserDialog
-            ${'$'}d.Description = '$safeTitle'
-            ${'$'}d.RootFolder = [System.Environment+SpecialFolder]::MyComputer
-            ${'$'}d.ShowNewFolderButton = ${'$'}true
+            ${'$'}d = New-Object System.Windows.Forms.OpenFileDialog
+            ${'$'}d.Title = '$safeTitle'
+            ${'$'}d.ValidateNames = ${'$'}false
+            ${'$'}d.CheckFileExists = ${'$'}false
+            ${'$'}d.CheckPathExists = ${'$'}true
+            ${'$'}d.FileName = 'Folder Selection.'
             if (${'$'}d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-                Write-Output ${'$'}d.SelectedPath
+                Write-Output ([System.IO.Path]::GetDirectoryName(${'$'}d.FileName))
             }
         """.trimIndent()
 
