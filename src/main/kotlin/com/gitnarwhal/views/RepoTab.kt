@@ -68,6 +68,15 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     private val commitDataPanel = CommitDataPanel(this)
 
+    // ── Commit file list + diff ───────────────────────────────────────────────
+    private val commitFileModel  = DefaultListModel<String>()
+    private val commitFileList   = JList(commitFileModel).apply {
+        selectionMode = ListSelectionModel.SINGLE_SELECTION
+    }
+    private val commitDiffScroll = JScrollPane()
+    private val commitFileLabel  = JLabel("0 files")
+    private var currentCommit: Commit? = null
+
     // ── Branch tree ───────────────────────────────────────────────────────────
     private data class BranchInfo(
         val fullName: String, val leafName: String,
@@ -140,10 +149,23 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
 
         // History view: commit table above, detail panel below
+        // Detail panel = [metadata+filelist | diff]
+        val leftDetailSplit = JSplitPane(
+            JSplitPane.VERTICAL_SPLIT,
+            JScrollPane(commitDataPanel),
+            buildCommitFileListPanel()
+        ).apply { resizeWeight = 0.4; dividerLocation = 180 }
+
+        val commitDetailSplit = JSplitPane(
+            JSplitPane.HORIZONTAL_SPLIT,
+            leftDetailSplit,
+            commitDiffScroll
+        ).apply { resizeWeight = 0.35 }
+
         val historyView = JSplitPane(
             JSplitPane.VERTICAL_SPLIT,
             JScrollPane(commitTable),
-            JScrollPane(commitDataPanel)
+            commitDetailSplit
         ).apply { resizeWeight = 0.7; dividerLocation = 400 }
 
         mainContainer.add(historyView,         CARD_HISTORY)
@@ -165,7 +187,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 if (row in commitList.indices) {
                     val c = commitList[row]
                     if (c.hash == UNCOMMITTED_HASH) showFileStatus()
-                    else commitDataPanel.showCommit(c)
+                    else {
+                        currentCommit = c
+                        commitDataPanel.showCommit(c)
+                        loadCommitFiles(c)
+                    }
                 }
             }
         }
@@ -196,6 +222,89 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     // ── File Status panel ─────────────────────────────────────────────────────
+
+    // ── Commit file list panel ────────────────────────────────────────────────
+
+    private fun buildCommitFileListPanel(): JComponent {
+        val panel = JPanel(BorderLayout())
+
+        // toolbar: file count label
+        val toolbar = JPanel(BorderLayout()).apply {
+            border = BorderFactory.createEmptyBorder(3, 8, 3, 8)
+            isOpaque = false
+        }
+        commitFileLabel.font = commitFileLabel.font.deriveFont(Font.PLAIN, 11f)
+        commitFileLabel.foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+        toolbar.add(commitFileLabel, BorderLayout.WEST)
+        panel.add(toolbar, BorderLayout.NORTH)
+
+        commitFileList.cellRenderer = CommitFileCellRenderer()
+        commitFileList.addListSelectionListener { e ->
+            if (!e.valueIsAdjusting) {
+                val line   = commitFileList.selectedValue ?: return@addListSelectionListener
+                val commit = currentCommit            ?: return@addListSelectionListener
+                showCommitFileDiff(commit, line)
+            }
+        }
+        panel.add(JScrollPane(commitFileList), BorderLayout.CENTER)
+        return panel
+    }
+
+    private fun loadCommitFiles(commit: Commit) {
+        commitFileModel.clear()
+        commitDiffScroll.setViewportView(null)
+        commitFileLabel.text = "loading…"
+        object : SwingWorker<List<String>, Void>() {
+            override fun doInBackground(): List<String> {
+                val r = git.commitFiles(commit.hash)
+                if (!r.success) return emptyList()
+                return r.output.lines().filter { it.isNotBlank() }
+            }
+            override fun done() {
+                val files = try { get() } catch (_: Exception) { return }
+                files.forEach { commitFileModel.addElement(it) }
+                commitFileLabel.text = "${files.size} file${if (files.size != 1) "s" else ""}"
+                if (files.isNotEmpty()) commitFileList.selectedIndex = 0
+            }
+        }.execute()
+    }
+
+    private fun showCommitFileDiff(commit: Commit, fileLine: String) {
+        val path = fileLine.substringAfter("\t").trim()
+        object : SwingWorker<String, Void>() {
+            override fun doInBackground() = git.showFileDiff(commit.hash, path).output
+            override fun done() {
+                val diff = try { get() } catch (_: Exception) { return }
+                commitDiffScroll.setViewportView(
+                    buildDiffView(diff, staged = false, file = path, commitHash = commit.hash))
+                commitDiffScroll.revalidate()
+            }
+        }.execute()
+    }
+
+    private inner class CommitFileCellRenderer : DefaultListCellRenderer() {
+        override fun getListCellRendererComponent(
+            list: JList<*>, value: Any?, index: Int,
+            isSelected: Boolean, cellHasFocus: Boolean
+        ): java.awt.Component {
+            val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
+            val line  = value?.toString() ?: ""
+            val tab   = line.indexOf('\t')
+            if (tab < 0) return label
+            val status = line.substring(0, tab).trim()
+            val path   = line.substring(tab + 1).trim()
+            val (letter, color) = when {
+                status.startsWith("A") -> "A" to Color(0x81, 0xC7, 0x84)
+                status.startsWith("D") -> "D" to Color(0xE5, 0x73, 0x73)
+                status.startsWith("R") -> "R" to Color(0x4F, 0xC3, 0xF7)
+                status.startsWith("C") -> "C" to Color(0xFF, 0xB7, 0x4D)
+                else                   -> "M" to Color(0xFF, 0xB7, 0x4D)
+            }
+            label.text = "<html><font color='${colorHex(color)}'><b>$letter</b></font>&nbsp;&nbsp;$path</html>"
+            return label
+        }
+        private fun colorHex(c: Color) = "#%02X%02X%02X".format(c.red, c.green, c.blue)
+    }
 
     private fun buildFileStatusPanel(): JComponent {
         // ── File selection → show diff ────────────────────────────────────────
@@ -420,14 +529,21 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         hunk.lines.forEach { appendLine(it) }
     }
 
-    private fun buildDiffView(diffText: String, staged: Boolean, file: String): JPanel {
+    private fun buildDiffView(
+        diffText: String, staged: Boolean, file: String,
+        commitHash: String? = null
+    ): JPanel {
         val bgColor   = UIManager.getColor("EditorPane.background") ?: Color(0x2B, 0x2B, 0x2B)
         val container = JPanel().apply {
             layout     = BoxLayout(this, BoxLayout.Y_AXIS)
             background = bgColor
         }
         if (diffText.isBlank()) {
-            container.add(JLabel(if (staged) "No staged changes" else "No unstaged changes").apply {
+            container.add(JLabel(when {
+                commitHash != null -> "No diff available"
+                staged             -> "No staged changes"
+                else               -> "No unstaged changes"
+            }).apply {
                 border     = BorderFactory.createEmptyBorder(12, 12, 12, 12)
                 foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
                 alignmentX = Component.LEFT_ALIGNMENT
@@ -445,40 +561,51 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
             }
 
-            val stageBtn   = JButton("$actionVerb hunk")
-            val discardBtn = JButton("Discard hunk")
-
             val lineList = buildHunkLineList(hunk.lines, bgColor)
 
-            // Update button labels when selection changes
-            lineList.selectionModel.addListSelectionListener {
-                val hasLines = hasActionableSelection(lineList)
-                stageBtn.text   = if (hasLines) "$actionVerb lines" else "$actionVerb hunk"
-                discardBtn.text = if (hasLines) "Discard lines"     else "Discard hunk"
-            }
+            val hunkBtnRow = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 2)).apply { isOpaque = false }
 
-            stageBtn.addActionListener {
-                val selIdx = lineList.selectedIndices.toSet()
-                val patch  = if (hasActionableSelection(lineList)) buildLinePatch(parsed.fileHeader, hunk, selIdx)
-                             else buildPatch(parsed.fileHeader, hunk)
-                val r = if (staged) git.applyPatch(patch, cached = true, reverse = true)
-                        else        git.applyPatch(patch, cached = true)
-                if (!r.success) showError("$actionVerb failed", r.output)
-                else { showFileDiff(file, staged); refreshFileStatus() }
-            }
-            discardBtn.addActionListener {
-                val selIdx = lineList.selectedIndices.toSet()
-                val patch  = if (hasActionableSelection(lineList)) buildLinePatch(parsed.fileHeader, hunk, selIdx)
-                             else buildPatch(parsed.fileHeader, hunk)
-                val r = git.applyPatch(patch, cached = false, reverse = true)
-                if (!r.success) showError("Discard failed", r.output)
-                else { showFileDiff(file, staged); refreshFileStatus() }
-            }
+            if (commitHash != null) {
+                // ── Commit view: Reverse hunk only ────────────────────────────
+                val reverseBtn = JButton("Reverse hunk")
+                reverseBtn.addActionListener {
+                    val selIdx = lineList.selectedIndices.toSet()
+                    val patch  = if (hasActionableSelection(lineList)) buildLinePatch(parsed.fileHeader, hunk, selIdx)
+                                 else buildPatch(parsed.fileHeader, hunk)
+                    val r = git.applyPatch(patch, cached = false, reverse = true)
+                    if (!r.success) showError("Reverse failed", r.output)
+                    else refreshFileStatus()
+                }
+                hunkBtnRow.add(reverseBtn)
+            } else {
+                // ── Staging view: Stage / Discard ─────────────────────────────
+                val stageBtn   = JButton("$actionVerb hunk")
+                val discardBtn = JButton("Discard hunk")
 
-            val hunkBtnRow = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 2)).apply {
-                isOpaque = false
-                if (!staged) add(discardBtn)
-                add(stageBtn)
+                lineList.selectionModel.addListSelectionListener {
+                    val hasLines = hasActionableSelection(lineList)
+                    stageBtn.text   = if (hasLines) "$actionVerb lines" else "$actionVerb hunk"
+                    discardBtn.text = if (hasLines) "Discard lines"     else "Discard hunk"
+                }
+                stageBtn.addActionListener {
+                    val selIdx = lineList.selectedIndices.toSet()
+                    val patch  = if (hasActionableSelection(lineList)) buildLinePatch(parsed.fileHeader, hunk, selIdx)
+                                 else buildPatch(parsed.fileHeader, hunk)
+                    val r = if (staged) git.applyPatch(patch, cached = true, reverse = true)
+                            else        git.applyPatch(patch, cached = true)
+                    if (!r.success) showError("$actionVerb failed", r.output)
+                    else { showFileDiff(file, staged); refreshFileStatus() }
+                }
+                discardBtn.addActionListener {
+                    val selIdx = lineList.selectedIndices.toSet()
+                    val patch  = if (hasActionableSelection(lineList)) buildLinePatch(parsed.fileHeader, hunk, selIdx)
+                                 else buildPatch(parsed.fileHeader, hunk)
+                    val r = git.applyPatch(patch, cached = false, reverse = true)
+                    if (!r.success) showError("Discard failed", r.output)
+                    else { showFileDiff(file, staged); refreshFileStatus() }
+                }
+                if (!staged) hunkBtnRow.add(discardBtn)
+                hunkBtnRow.add(stageBtn)
             }
             val hunkHeaderRow = JPanel(BorderLayout()).apply {
                 isOpaque    = false
