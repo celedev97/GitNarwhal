@@ -1,15 +1,20 @@
 package com.gitnarwhal.utils
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.awt.Desktop
 import java.awt.Window
+import java.io.File
+import java.io.FileOutputStream
 import java.net.URI
+import java.net.URL
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.Properties
 import javax.swing.JOptionPane
+import javax.swing.ProgressMonitor
 import javax.swing.SwingWorker
 
 object UpdateService {
@@ -66,11 +71,15 @@ object UpdateService {
                 if (newTag == Settings.ignoredUpdateVersion) return
                 if (!isNewer(newTag, currentVersion))        return
 
-                val options = arrayOf("Open release page", "Ask me later", "Skip this version")
+                val isWindows    = System.getProperty("os.name", "").lowercase().contains("win")
+                val winAsset     = if (isWindows) findWindowsAsset(release.optJSONArray("assets")) else null
+                val installLabel = if (winAsset != null) "Install now" else "Open release page"
+
+                val options = arrayOf(installLabel, "Ask me later", "Skip this version")
                 val choice  = JOptionPane.showOptionDialog(
                     owner,
                     "GitNarwhal $newTag is available  (current: $currentVersion)\n\n" +
-                    "Would you like to download the update?",
+                    "Would you like to update?",
                     "Update available",
                     JOptionPane.DEFAULT_OPTION,
                     JOptionPane.INFORMATION_MESSAGE,
@@ -79,7 +88,8 @@ object UpdateService {
                     options[0]
                 )
                 when (choice) {
-                    0 -> openBrowser(htmlUrl)
+                    0 -> if (winAsset != null) downloadAndInstall(winAsset, owner)
+                         else openBrowser(htmlUrl)
                     2 -> { Settings.ignoredUpdateVersion = newTag; Settings.save() }
                 }
             }
@@ -96,6 +106,66 @@ object UpdateService {
     private fun parseSemver(v: String): Triple<Int, Int, Int>? {
         val m = VERSION_REGEX.find(v) ?: return null
         return Triple(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())
+    }
+
+    // ── Find Windows installer asset ──────────────────────────────────────────
+    private fun findWindowsAsset(assets: JSONArray?): JSONObject? {
+        if (assets == null) return null
+        for (i in 0 until assets.length()) {
+            val a = assets.getJSONObject(i)
+            if (a.optString("name").endsWith("-windows-x64-setup.exe")) return a
+        }
+        return null
+    }
+
+    // ── Download installer and run silently ───────────────────────────────────
+    private fun downloadAndInstall(asset: JSONObject, owner: Window?) {
+        val downloadUrl = asset.optString("browser_download_url").ifBlank { return }
+        val fileSize    = asset.optLong("size", -1L)
+
+        val pm = ProgressMonitor(owner, "Downloading update…", "", 0, 100)
+        pm.millisToDecideToPopup   = 500
+        pm.millisToPopup           = 1000
+
+        object : SwingWorker<File?, Int>() {
+            override fun doInBackground(): File? {
+                return try {
+                    val tmp = File.createTempFile("gitnarwhal_update_", ".exe")
+                    val conn = URL(downloadUrl).openConnection()
+                    conn.connect()
+                    conn.getInputStream().use { input ->
+                        FileOutputStream(tmp).use { output ->
+                            val buf     = ByteArray(8192)
+                            var read    = 0L
+                            var n: Int
+                            while (input.read(buf).also { n = it } >= 0) {
+                                output.write(buf, 0, n)
+                                read += n
+                                if (fileSize > 0) publish((read * 100L / fileSize).toInt())
+                            }
+                        }
+                    }
+                    tmp
+                } catch (e: Exception) {
+                    JOptionPane.showMessageDialog(owner, "Download failed:\n${e.message}")
+                    null
+                }
+            }
+
+            override fun process(chunks: List<Int>) {
+                pm.setProgress(chunks.last())
+                if (pm.isCanceled) cancel(true)
+            }
+
+            override fun done() {
+                pm.close()
+                val file = try { get() } catch (_: Exception) { null } ?: return
+                // Launch installer silently, then exit — installer will restart the app
+                ProcessBuilder(file.absolutePath, "/SILENT", "/FORCECLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS")
+                    .start()
+                System.exit(0)
+            }
+        }.execute()
     }
 
     // ── Open release page in default browser ─────────────────────────────────
