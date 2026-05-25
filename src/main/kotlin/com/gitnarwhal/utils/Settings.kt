@@ -18,11 +18,12 @@ object Settings : JSONObject(settingsJSON) {
 
     //TODO: you could add an optional callback to JSONSettings, so editing a property immediately call the callback that applies it.
 
-    var autoUpdate          by JSONSetting(true)
+    var autoUpdate           by JSONSetting(true)
     var ignoredUpdateVersion by JSONSetting("")
-    var theme               by JSONSetting("classpath:/com/gitnarwhal/themes/nord.theme.json")
+    var theme                by JSONSetting("classpath:/com/gitnarwhal/themes/nord.theme.json")
 
-    var openTabs            by JSONSetting(JSONArray())
+    var openTabs             by JSONSetting(JSONArray())
+    var recentRepos          by JSONSetting(JSONArray())
 
 }
 

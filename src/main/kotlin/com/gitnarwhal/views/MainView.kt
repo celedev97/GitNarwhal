@@ -1,6 +1,7 @@
 package com.gitnarwhal.views
 
 import com.gitnarwhal.utils.NativeFileChooser
+import com.gitnarwhal.utils.RecentReposService
 import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.utils.save
 import com.gitnarwhal.utils.toPath
@@ -116,6 +117,7 @@ class MainView : JPanel(BorderLayout()) {
 
     fun addTab(repo: RepoTab, save: Boolean = true) {
         addTab(repo, repo.tabTitle)
+        RecentReposService.record(repo.tabTitle, repo.path)
         if (save) {
             Settings.openTabs.put(JSONObject().apply {
                 put("name", repo.tabTitle)
