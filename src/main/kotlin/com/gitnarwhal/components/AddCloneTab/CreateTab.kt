@@ -13,52 +13,36 @@ import javax.swing.*
 
 class CreateTab(private val addCloneTab: AddCloneTab) : JPanel(GridBagLayout()) {
 
-    val pathField = JTextField(30)
+    /** Parent path comes from the shared field in AddCloneTab. */
     val nameField = JTextField(20)
 
     init {
         border = BorderFactory.createEmptyBorder(16, 16, 16, 16)
 
         val gbc = GridBagConstraints().apply {
-            insets = Insets(4, 4, 4, 4)
-            fill   = GridBagConstraints.HORIZONTAL
-            anchor = GridBagConstraints.WEST
+            insets  = Insets(4, 4, 4, 4)
+            fill    = GridBagConstraints.HORIZONTAL
+            anchor  = GridBagConstraints.WEST
         }
 
-        gbc.gridx = 0; gbc.gridy = 0
-        add(JLabel("Parent path:"), gbc)
-        gbc.gridx = 1; gbc.weightx = 1.0
-        add(pathField, gbc)
-        gbc.gridx = 2; gbc.weightx = 0.0
-        val browseBtn = JButton("Browse…")
-        browseBtn.addActionListener { browse() }
-        add(browseBtn, gbc)
-
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.0
+        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.0
         add(JLabel("Name:"), gbc)
         gbc.gridx = 1; gbc.weightx = 1.0; gbc.gridwidth = 2
         add(nameField, gbc)
         gbc.gridwidth = 1
 
-        gbc.gridx = 1; gbc.gridy = 2
+        gbc.gridx = 1; gbc.gridy = 1
         val runBtn = JButton("Create")
         runBtn.addActionListener { run() }
         add(runBtn, gbc)
 
-        gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 3
+        gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 3
         gbc.weighty = 1.0; gbc.fill = GridBagConstraints.BOTH
         add(JPanel().apply { isOpaque = false }, gbc)
     }
 
-    private fun browse() {
-        val chooser = JFileChooser().apply { fileSelectionMode = JFileChooser.DIRECTORIES_ONLY }
-        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            pathField.text = chooser.selectedFile.absolutePath
-        }
-    }
-
     fun run() {
-        val parent = pathField.text.trim()
+        val parent = addCloneTab.sharedPathField.text.trim()
         val name   = nameField.text.trim()
         if (parent.isBlank()) { error("Parent path is required"); return }
         if (name.isBlank())   { error("Name is required"); return }
