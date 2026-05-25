@@ -152,7 +152,26 @@ class Git(val repo: String) {
 
     fun tagCreate(name: String, message: String? = null) =
         if (message != null) git("tag", "-a", name, "-m", message) else git("tag", name)
-    fun tagDelete(name: String) = git("tag", "-d", name)
+
+    fun tagCreateAt(
+        name: String, hash: String,
+        message: String? = null,
+        force: Boolean = false,
+        lightweight: Boolean = false
+    ): Command {
+        val args = mutableListOf("tag")
+        if (force) args += "-f"
+        if (!lightweight) {
+            args += "-a"
+            args += "-m"; args += (message?.ifBlank { null } ?: name)
+        }
+        args += name; args += hash
+        return git(*args.toTypedArray())
+    }
+
+    fun tagDelete(name: String)                          = git("tag", "-d", name)
+    fun pushTag(remote: String = "origin", tag: String)  = git("push", remote, tag)
+    fun pushDeleteTag(remote: String, tag: String)       = git("push", remote, "--delete", tag)
     //endregion
 
     //region init / clone (static-style helpers — no repo context required)
