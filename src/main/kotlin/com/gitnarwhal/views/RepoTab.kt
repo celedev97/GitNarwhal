@@ -894,50 +894,106 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     private fun buildCommitPopup(commit: Commit): JPopupMenu {
-        val menu = JPopupMenu(commit.shortHash)
-        menu.add(menuItem("Copy hash")       { copyToClipboard(commit.hash) })
-        menu.add(menuItem("Copy short hash") { copyToClipboard(commit.shortHash) })
-        menu.addSeparator()
-        menu.add(menuItem("Create branch from this…") {
-            val name = JOptionPane.showInputDialog(this, "New branch name:", "Create branch",
-                JOptionPane.QUESTION_MESSAGE)?.takeIf { it.isNotBlank() } ?: return@menuItem
-            val r = git.createBranchFrom(name, commit.hash)
-            if (!r.success) showError("Create branch failed", r.output); refresh()
+        val isVirtual = commit.hash == UNCOMMITTED_HASH
+        val menu = JPopupMenu()
+
+        // ── Checkout ─────────────────────────────────────────────────────────
+        menu.add(menuItem("Checkout…") {
+            if (isVirtual) return@menuItem
+            if (confirm("Checkout commit ${commit.shortHash}?\n\nThis puts the repo in detached HEAD state.")) {
+                val r = git.selectBranch(commit.hash)
+                if (!r.success) showError("Checkout failed", r.output) else refresh()
+            }
         })
+
+        // ── Merge ────────────────────────────────────────────────────────────
+        menu.add(menuItem("Merge…") {
+            if (isVirtual) return@menuItem
+            if (confirm("Merge commit ${commit.shortHash} into the current branch?")) {
+                val r = git.merge(commit.hash)
+                if (!r.success) showError("Merge failed", r.output) else refresh()
+            }
+        })
+
+        // ── Rebase ───────────────────────────────────────────────────────────
+        menu.add(menuItem("Rebase…") {
+            if (isVirtual) return@menuItem
+            if (confirm("Rebase current branch onto ${commit.shortHash}?")) {
+                val r = git.rebase(commit.hash)
+                if (!r.success) showError("Rebase failed", r.output) else refresh()
+            }
+        })
+
+        // ── Tag ──────────────────────────────────────────────────────────────
+        menu.add(menuItem("Tag…") {
+            val win = SwingUtilities.getWindowAncestor(this)
+            val hash = if (isVirtual) "HEAD" else commit.hash
+            TagDialog(git, hash, win).apply { isVisible = true }
+            refresh()
+        })
+
         menu.addSeparator()
-        menu.add(menuItem("Cherry-pick") {
+
+        // ── Branch ───────────────────────────────────────────────────────────
+        menu.add(menuItem("Create Branch…") {
+            val name = JOptionPane.showInputDialog(this, "New branch name:", "Create Branch",
+                JOptionPane.QUESTION_MESSAGE)?.trim()?.ifBlank { null } ?: return@menuItem
+            val from = if (isVirtual) "HEAD" else commit.hash
+            val r = git.createBranchFrom(name, from)
+            if (!r.success) showError("Create branch failed", r.output) else refresh()
+        })
+
+        menu.addSeparator()
+
+        // ── Cherry-pick ───────────────────────────────────────────────────────
+        menu.add(menuItem("Cherry Pick") {
+            if (isVirtual) return@menuItem
             if (confirm("Cherry-pick ${commit.shortHash}?")) {
                 val r = git.cherryPick(commit.hash)
-                if (!r.success) showError("Cherry-pick failed", r.output); refresh()
+                if (!r.success) showError("Cherry-pick failed", r.output) else refresh()
             }
-        })
-        menu.add(menuItem("Revert") {
-            if (confirm("Revert ${commit.shortHash}? (creates a new commit)")) {
+        }.also { it.isEnabled = !isVirtual })
+
+        // ── Revert ───────────────────────────────────────────────────────────
+        menu.add(menuItem("Reverse Commit…") {
+            if (isVirtual) return@menuItem
+            if (confirm("Revert ${commit.shortHash}? (creates a new revert commit)")) {
                 val r = git.revert(commit.hash)
-                if (!r.success) showError("Revert failed", r.output); refresh()
+                if (!r.success) showError("Revert failed", r.output) else refresh()
             }
-        })
+        }.also { it.isEnabled = !isVirtual })
+
         menu.addSeparator()
-        val resetMenu = JMenu("Reset current branch to here")
-        resetMenu.add(menuItem("Soft (keep index + working tree)") {
+
+        // ── Reset ────────────────────────────────────────────────────────────
+        val resetMenu = JMenu("Reset current branch to this commit")
+        resetMenu.isEnabled = !isVirtual
+        resetMenu.add(menuItem("Soft  — keep index and working tree") {
             if (confirm("git reset --soft ${commit.shortHash}?")) {
                 val r = git.reset(commit.hash, "soft")
-                if (!r.success) showError("Reset failed", r.output); refresh()
+                if (!r.success) showError("Reset failed", r.output) else refresh()
             }
         })
-        resetMenu.add(menuItem("Mixed (unstage changes)") {
+        resetMenu.add(menuItem("Mixed  — unstage changes") {
             if (confirm("git reset --mixed ${commit.shortHash}?")) {
                 val r = git.reset(commit.hash, "mixed")
-                if (!r.success) showError("Reset failed", r.output); refresh()
+                if (!r.success) showError("Reset failed", r.output) else refresh()
             }
         })
-        resetMenu.add(menuItem("Hard (DISCARD changes — destructive!)") {
+        resetMenu.add(menuItem("Hard  — DISCARD all changes (destructive!)") {
             if (confirm("DESTRUCTIVE: git reset --hard ${commit.shortHash}\n\nAll uncommitted changes will be lost.")) {
                 val r = git.reset(commit.hash, "hard")
-                if (!r.success) showError("Reset failed", r.output); refresh()
+                if (!r.success) showError("Reset failed", r.output) else refresh()
             }
         })
         menu.add(resetMenu)
+
+        menu.addSeparator()
+
+        // ── Copy ─────────────────────────────────────────────────────────────
+        menu.add(menuItem("Copy SHA to Clipboard")       { if (!isVirtual) copyToClipboard(commit.hash) })
+        menu.add(menuItem("Copy short SHA to Clipboard") { if (!isVirtual) copyToClipboard(commit.shortHash) })
+
         return menu
     }
 
