@@ -3,9 +3,10 @@
 
 #define MyAppName "GitNarwhal"
 #define MyAppVersion "dev"
-#define MyAppPublisher "fc-dev"
-#define MyAppURL "https://github.com/fc-dev/GitNarwhal"
-#define MyAppExeName "gitnarwhal.bat"
+#define MyAppPublisher "celedev97"
+#define MyAppURL "https://github.com/celedev97/GitNarwhal"
+#define MyAppExeName "jre\bin\javaw.exe"
+#define MyAppJar     "jars\gitnarwhal.jar"
 
 [Setup]
 AppId={{03F108F4-4D95-47D2-AEBE-68D511C5FFB4}
@@ -37,11 +38,11 @@ Source: "./*"; DestDir: "{app}"; Excludes: "*.iss,*.ico"; Flags: ignoreversion r
 Source: "./icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icon.ico"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icon.ico"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-jar ""{app}\{#MyAppJar}"""; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "-jar ""{app}\{#MyAppJar}"""; WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: shellexec postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "-jar ""{app}\{#MyAppJar}"""; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
