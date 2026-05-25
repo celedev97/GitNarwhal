@@ -12,8 +12,10 @@ import java.awt.BorderLayout
 import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Dimension
-import java.awt.FlowLayout
 import java.awt.Graphics
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import java.awt.Insets
 import javax.swing.*
 
 class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
@@ -31,13 +33,12 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
     private val addBtn    = NavTabButton("Add",    MaterialDesign.MDI_FOLDER_PLUS)
     private val createBtn = NavTabButton("Create", MaterialDesign.MDI_PLUS)
 
-    // kept for external callers that use the old button references
     val activateCloneTab:  JButton get() = cloneBtn
     val activateAddTab:    JButton get() = addBtn
     val activateCreateTab: JButton get() = createBtn
 
-    /** Shared path field — visible only when Add or Create tab is active. */
-    val sharedPathField = JTextField(40)
+    /** Shared path field — used by both Add and Create tabs. */
+    val sharedPathField = JTextField()
     private val pathRow = buildPathRow()
 
     init {
@@ -45,6 +46,7 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
         container.add(addTab,    CARD_ADD)
         container.add(createTab, CARD_CREATE)
 
+        // ── Nav bar ───────────────────────────────────────────────────────────
         val navBar = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.X_AXIS)
             border = BorderFactory.createMatteBorder(0, 0, 1, 0,
@@ -57,8 +59,8 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
         navBar.add(Box.createHorizontalGlue())
 
         val north = JPanel(BorderLayout())
-        north.add(navBar,   BorderLayout.NORTH)
-        north.add(pathRow,  BorderLayout.SOUTH)
+        north.add(navBar,  BorderLayout.NORTH)
+        north.add(pathRow, BorderLayout.SOUTH)
 
         cloneBtn.addActionListener  { switchTo(CARD_CLONE) }
         addBtn.addActionListener    { switchTo(CARD_ADD) }
@@ -83,7 +85,7 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
         switchTo(card)
     }
 
-    // ── Internals ─────────────────────────────────────────────────────────────
+    // ── Internal ──────────────────────────────────────────────────────────────
 
     private fun switchTo(card: String) {
         cards.show(container, card)
@@ -94,24 +96,40 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
             else        -> cloneBtn
         }
         listOf(cloneBtn, addBtn, createBtn).forEach { it.setNavSelected(it == active) }
-        // path row only relevant for Add / Create
         pathRow.isVisible = card != CARD_CLONE
         revalidate()
     }
 
     private fun buildPathRow(): JPanel {
-        val row = JPanel(FlowLayout(FlowLayout.LEFT, 8, 6))
-        row.add(JLabel("Path:"))
-        row.add(sharedPathField)
+        val row = JPanel(GridBagLayout())
+        row.border = BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 0, 1, 0,
+                UIManager.getColor("Separator.foreground") ?: Color(0x44_44_44)),
+            BorderFactory.createEmptyBorder(6, 12, 6, 12)
+        )
+
+        val gbc = GridBagConstraints().apply {
+            insets  = Insets(0, 4, 0, 4)
+            fill    = GridBagConstraints.HORIZONTAL
+            anchor  = GridBagConstraints.WEST
+        }
+
+        gbc.gridx = 0; gbc.weightx = 0.0
+        row.add(JLabel("Path:"), gbc)
+
+        gbc.gridx = 1; gbc.weightx = 1.0
+        row.add(sharedPathField, gbc)
+
+        gbc.gridx = 2; gbc.weightx = 0.0
         val browseBtn = JButton("Browse…")
         browseBtn.addActionListener {
             val win = SwingUtilities.getWindowAncestor(this)
             val dir = NativeFileChooser.chooseDirectory(win, "Select Folder") ?: return@addActionListener
             sharedPathField.text = dir.absolutePath
-            // auto-fill name in AddTab from folder name
             addTab.nameField.text = dir.toPath().fileName?.toString() ?: ""
         }
-        row.add(browseBtn)
+        row.add(browseBtn, gbc)
+
         row.isVisible = false
         return row
     }
