@@ -80,13 +80,21 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
         })
     }
 
-    /** Opens native folder picker and writes result into sharedPathDoc. */
+    /**
+     * Opens native folder picker off the EDT (PowerShell subprocess blocks),
+     * then writes result into sharedPathDoc and calls [onPicked] on the EDT.
+     */
     fun browseForPath(owner: Component, onPicked: (File) -> Unit = {}) {
-        val win = SwingUtilities.getWindowAncestor(owner)
-        val dir = NativeFileChooser.chooseDirectory(win, "Select Folder") ?: return
-        sharedPathDoc.remove(0, sharedPathDoc.length)
-        sharedPathDoc.insertString(0, dir.absolutePath, null)
-        onPicked(dir)
+        val win = SwingUtilities.getWindowAncestor(owner)   // captured on EDT
+        object : SwingWorker<File?, Void>() {
+            override fun doInBackground() = NativeFileChooser.chooseDirectory(win, "Select Folder")
+            override fun done() {
+                val dir = try { get() } catch (_: Exception) { return } ?: return
+                sharedPathDoc.remove(0, sharedPathDoc.length)
+                sharedPathDoc.insertString(0, dir.absolutePath, null)
+                onPicked(dir)
+            }
+        }.execute()
     }
 
     // ── Internal ──────────────────────────────────────────────────────────────

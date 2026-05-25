@@ -47,8 +47,13 @@ class CloneTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
         val browseBtn = JButton("Browse")
         browseBtn.addActionListener {
             val win = SwingUtilities.getWindowAncestor(this)
-            val dir = NativeFileChooser.chooseDirectory(win, "Select Destination") ?: return@addActionListener
-            destField.text = dir.absolutePath
+            object : SwingWorker<java.io.File?, Void>() {
+                override fun doInBackground() = NativeFileChooser.chooseDirectory(win, "Select Destination")
+                override fun done() {
+                    val dir = try { get() } catch (_: Exception) { return } ?: return
+                    destField.text = dir.absolutePath
+                }
+            }.execute()
         }
         form.add(pathRow(destField, browseBtn))
         form.add(Box.createVerticalStrut(10))
