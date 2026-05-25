@@ -3,6 +3,8 @@ package com.gitnarwhal.views
 import com.gitnarwhal.components.AddCloneTab.AddTab
 import com.gitnarwhal.components.AddCloneTab.CloneTab
 import com.gitnarwhal.components.AddCloneTab.CreateTab
+import com.gitnarwhal.utils.NativeFileChooser
+import com.gitnarwhal.utils.toPath
 import org.kordamp.ikonli.Ikon
 import org.kordamp.ikonli.materialdesign.MaterialDesign
 import org.kordamp.ikonli.swing.FontIcon
@@ -10,6 +12,7 @@ import java.awt.BorderLayout
 import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Dimension
+import java.awt.FlowLayout
 import java.awt.Graphics
 import javax.swing.*
 
@@ -33,6 +36,10 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
     val activateAddTab:    JButton get() = addBtn
     val activateCreateTab: JButton get() = createBtn
 
+    /** Shared path field — visible only when Add or Create tab is active. */
+    val sharedPathField = JTextField(40)
+    private val pathRow = buildPathRow()
+
     init {
         container.add(cloneTab,  CARD_CLONE)
         container.add(addTab,    CARD_ADD)
@@ -49,11 +56,15 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
         navBar.add(createBtn)
         navBar.add(Box.createHorizontalGlue())
 
+        val north = JPanel(BorderLayout())
+        north.add(navBar,   BorderLayout.NORTH)
+        north.add(pathRow,  BorderLayout.SOUTH)
+
         cloneBtn.addActionListener  { switchTo(CARD_CLONE) }
         addBtn.addActionListener    { switchTo(CARD_ADD) }
         createBtn.addActionListener { switchTo(CARD_CREATE) }
 
-        add(navBar,    BorderLayout.NORTH)
+        add(north,     BorderLayout.NORTH)
         add(container, BorderLayout.CENTER)
 
         switchTo(CARD_CLONE)
@@ -61,7 +72,6 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    /** Switch by card name or by button reference (backward-compat). */
     fun switchTab(buttonOrCard: Any) {
         val card = when (buttonOrCard) {
             cloneBtn  -> CARD_CLONE
@@ -84,6 +94,26 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
             else        -> cloneBtn
         }
         listOf(cloneBtn, addBtn, createBtn).forEach { it.setNavSelected(it == active) }
+        // path row only relevant for Add / Create
+        pathRow.isVisible = card != CARD_CLONE
+        revalidate()
+    }
+
+    private fun buildPathRow(): JPanel {
+        val row = JPanel(FlowLayout(FlowLayout.LEFT, 8, 6))
+        row.add(JLabel("Path:"))
+        row.add(sharedPathField)
+        val browseBtn = JButton("Browse…")
+        browseBtn.addActionListener {
+            val win = SwingUtilities.getWindowAncestor(this)
+            val dir = NativeFileChooser.chooseDirectory(win, "Select Folder") ?: return@addActionListener
+            sharedPathField.text = dir.absolutePath
+            // auto-fill name in AddTab from folder name
+            addTab.nameField.text = dir.toPath().fileName?.toString() ?: ""
+        }
+        row.add(browseBtn)
+        row.isVisible = false
+        return row
     }
 
     // ── NavTabButton ──────────────────────────────────────────────────────────
@@ -93,8 +123,8 @@ class AddCloneTab(val mainView: MainView) : JPanel(BorderLayout()) {
         private val fontIcon = FontIcon.of(ikon, 22, unselectedColor())
 
         init {
-            text                  = label
-            icon                  = fontIcon
+            text                   = label
+            icon                   = fontIcon
             horizontalTextPosition = SwingConstants.CENTER
             verticalTextPosition   = SwingConstants.BOTTOM
             isBorderPainted        = false
