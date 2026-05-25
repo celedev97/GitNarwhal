@@ -15,6 +15,7 @@ import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Component
 import java.awt.Dimension
+import java.awt.FlowLayout
 import java.awt.Font
 import java.awt.Graphics
 import java.awt.Graphics2D
@@ -23,6 +24,8 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.*
 import javax.swing.table.AbstractTableModel
+import javax.swing.text.SimpleAttributeSet
+import javax.swing.text.StyleConstants
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeCellRenderer
 import javax.swing.tree.DefaultTreeModel
@@ -83,12 +86,28 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         componentPopupMenu = buildStashPopup()
     }
 
-    // ── File Status models — MUST be declared before init ────────────────────
+    // ── File Status models + widgets — MUST be declared before init ──────────
     private val stagedModel   = DefaultListModel<String>()
     private val unstagedModel = DefaultListModel<String>()
 
+    private val stagedList   = JList(stagedModel).apply {
+        selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
+    }
+    private val unstagedList = JList(unstagedModel).apply {
+        selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
+    }
+    private val stagedHeaderLabel   = JLabel("Staged files (0 files)")
+    private val unstagedHeaderLabel = JLabel("Unstaged files (0 files)")
+
+    private val diffScrollPane   = JScrollPane()
+    private val diffFileNameLabel = JLabel(" ", SwingConstants.LEFT)
+
+    private val commitMsgField          = JTextArea(4, 40).apply { lineWrap = true; wrapStyleWord = true }
+    private val amendCheckBox           = JCheckBox("Amend latest commit")
+    private val pushImmediatelyCheckBox = JCheckBox("Push changes immediately to origin/main")
+
     // ── Badge toolbar buttons ─────────────────────────────────────────────────
-    private val commitBtn = BadgeButton(MaterialDesign.MDI_CHECK_CIRCLE, "Commit") { commit() }
+    private val commitBtn = BadgeButton(MaterialDesign.MDI_CHECK_CIRCLE, "Commit") { showFileStatus() }
     private val pullBtn   = BadgeButton(MaterialDesign.MDI_ARROW_DOWN_BOLD, "Pull") { pull() }
     private val pushBtn   = BadgeButton(MaterialDesign.MDI_ARROW_UP_BOLD, "Push")  { push() }
 
@@ -153,50 +172,77 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     // ── File Status panel ─────────────────────────────────────────────────────
 
     private fun buildFileStatusPanel(): JComponent {
-        val stagedList   = JList(stagedModel).apply { selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION }
-        val unstagedList = JList(unstagedModel).apply { selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION }
+        // ── File selection → show diff ────────────────────────────────────────
+        stagedList.addListSelectionListener { e ->
+            if (!e.valueIsAdjusting && stagedList.selectedValue != null) {
+                unstagedList.clearSelection()
+                showFileDiff(stagedList.selectedValue.substring(2), staged = true)
+            }
+        }
+        unstagedList.addListSelectionListener { e ->
+            if (!e.valueIsAdjusting && unstagedList.selectedValue != null) {
+                stagedList.clearSelection()
+                showFileDiff(unstagedList.selectedValue.substring(2), staged = false)
+            }
+        }
 
-        val unstageAllBtn   = JButton("Unstage All")
-        val stageAllBtn     = JButton("Stage All")
-
+        // ── Staged panel ──────────────────────────────────────────────────────
+        val unstageAllBtn      = JButton("Unstage All")
+        val unstageSelectedBtn = JButton("Unstage Selected")
         unstageAllBtn.addActionListener {
             val r = git.unstageAll()
             if (!r.success) showError("Unstage failed", r.output)
             refreshFileStatus()
         }
+        unstageSelectedBtn.addActionListener {
+            stagedList.selectedValuesList.forEach { git.unstage(it.substring(2)) }
+            refreshFileStatus()
+        }
+        val stagedBtnRow = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 2)).apply {
+            isOpaque = false; add(unstageAllBtn); add(unstageSelectedBtn)
+        }
+        val stagedHeader = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            border   = BorderFactory.createEmptyBorder(4, 6, 2, 4)
+            add(stagedHeaderLabel, BorderLayout.WEST)
+            add(stagedBtnRow,      BorderLayout.EAST)
+        }
+        val stagedPanel = JPanel(BorderLayout()).apply {
+            add(stagedHeader,            BorderLayout.NORTH)
+            add(JScrollPane(stagedList), BorderLayout.CENTER)
+        }
+
+        // ── Unstaged panel ────────────────────────────────────────────────────
+        val stageAllBtn      = JButton("Stage All")
+        val stageSelectedBtn = JButton("Stage Selected")
         stageAllBtn.addActionListener {
             val r = git.addAll()
             if (!r.success) showError("Stage failed", r.output)
             refreshFileStatus()
         }
-
-        // Staged panel
-        val stagedHeader = JPanel(BorderLayout(4, 0)).apply {
-            add(JLabel("Staged files"), BorderLayout.WEST)
-            add(unstageAllBtn, BorderLayout.EAST)
+        stageSelectedBtn.addActionListener {
+            unstagedList.selectedValuesList.forEach { git.add(it.substring(2)) }
+            refreshFileStatus()
         }
-        val stagedPanel = JPanel(BorderLayout()).apply {
-            border = BorderFactory.createEmptyBorder(4, 4, 4, 4)
-            add(stagedHeader,          BorderLayout.NORTH)
-            add(JScrollPane(stagedList), BorderLayout.CENTER)
+        val unstagedBtnRow = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 2)).apply {
+            isOpaque = false; add(stageAllBtn); add(stageSelectedBtn)
         }
-
-        // Unstaged panel
-        val unstagedHeader = JPanel(BorderLayout(4, 0)).apply {
-            add(JLabel("Unstaged files"), BorderLayout.WEST)
-            add(stageAllBtn, BorderLayout.EAST)
+        val unstagedHeader = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            border   = BorderFactory.createEmptyBorder(4, 6, 2, 4)
+            add(unstagedHeaderLabel, BorderLayout.WEST)
+            add(unstagedBtnRow,      BorderLayout.EAST)
         }
         val unstagedPanel = JPanel(BorderLayout()).apply {
-            border = BorderFactory.createEmptyBorder(4, 4, 4, 4)
-            add(unstagedHeader,           BorderLayout.NORTH)
+            add(unstagedHeader,            BorderLayout.NORTH)
             add(JScrollPane(unstagedList), BorderLayout.CENTER)
         }
 
-        // Right-click: stage/unstage individual files
+        // Right-click context menus
         unstagedList.componentPopupMenu = JPopupMenu().apply {
             add(JMenuItem("Stage selected").apply {
                 addActionListener {
-                    unstagedList.selectedValuesList.forEach { git.add(it.substringAfter(" ").trim()) }
+                    unstagedList.selectedValuesList.forEach { git.add(it.substring(2)) }
                     refreshFileStatus()
                 }
             })
@@ -204,14 +250,83 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         stagedList.componentPopupMenu = JPopupMenu().apply {
             add(JMenuItem("Unstage selected").apply {
                 addActionListener {
-                    stagedList.selectedValuesList.forEach { git.unstage(it.substringAfter(" ").trim()) }
+                    stagedList.selectedValuesList.forEach { git.unstage(it.substring(2)) }
                     refreshFileStatus()
                 }
             })
         }
 
-        return JSplitPane(JSplitPane.VERTICAL_SPLIT, stagedPanel, unstagedPanel).apply {
-            resizeWeight = 0.5
+        // ── Diff panel (right) ────────────────────────────────────────────────
+        diffFileNameLabel.apply {
+            border = BorderFactory.createEmptyBorder(4, 8, 4, 8)
+            font   = font.deriveFont(Font.BOLD)
+        }
+        val diffTopBar = JPanel(BorderLayout()).apply {
+            border = BorderFactory.createMatteBorder(0, 0, 1, 0,
+                UIManager.getColor("Separator.foreground") ?: Color(0x44_44_44))
+            add(diffFileNameLabel, BorderLayout.WEST)
+        }
+        val diffOuter = JPanel(BorderLayout()).apply {
+            add(diffTopBar,    BorderLayout.NORTH)
+            add(diffScrollPane, BorderLayout.CENTER)
+        }
+
+        // ── File list vertical split ──────────────────────────────────────────
+        val fileListSplit = JSplitPane(JSplitPane.VERTICAL_SPLIT, stagedPanel, unstagedPanel).apply {
+            resizeWeight     = 0.4
+            dividerLocation  = 160
+            minimumSize      = Dimension(200, 0)
+        }
+
+        // ── Top half: files | diff ────────────────────────────────────────────
+        val topHalf = JSplitPane(JSplitPane.HORIZONTAL_SPLIT, fileListSplit, diffOuter).apply {
+            resizeWeight    = 0.0
+            dividerLocation = 260
+        }
+
+        // ── Commit area (bottom) ──────────────────────────────────────────────
+        val userName  = git.configGet("user.name").output.trim()
+        val userEmail = git.configGet("user.email").output.trim()
+        val authorStr = when {
+            userName.isNotBlank()  -> "$userName <$userEmail>"
+            userEmail.isNotBlank() -> userEmail
+            else                   -> "Unknown author"
+        }
+        val authorLabel = JLabel(authorStr).apply {
+            border     = BorderFactory.createEmptyBorder(0, 0, 4, 0)
+            font       = font.deriveFont(Font.PLAIN, 11f)
+            foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+        }
+
+        commitMsgField.putClientProperty("JTextField.placeholderText", "Commit message")
+        val commitBtnBottom = JButton("Commit").apply {
+            putClientProperty("FlatLaf.style",
+                "background: #1A6FBF; foreground: #FFFFFF; hoverBackground: #2078CC; pressedBackground: #155DA0")
+            addActionListener { doCommit() }
+        }
+        val checkboxPanel = JPanel().apply {
+            layout   = BoxLayout(this, BoxLayout.Y_AXIS)
+            isOpaque = false
+            add(pushImmediatelyCheckBox)
+            add(amendCheckBox)
+        }
+        val bottomBar = JPanel(BorderLayout(8, 0)).apply {
+            isOpaque = false
+            border   = BorderFactory.createEmptyBorder(4, 0, 0, 0)
+            add(checkboxPanel,  BorderLayout.CENTER)
+            add(commitBtnBottom, BorderLayout.EAST)
+        }
+        val commitArea = JPanel(BorderLayout(0, 4)).apply {
+            border        = BorderFactory.createEmptyBorder(6, 8, 6, 8)
+            preferredSize = Dimension(0, 160)
+            minimumSize   = Dimension(0, 120)
+            add(authorLabel,                 BorderLayout.NORTH)
+            add(JScrollPane(commitMsgField), BorderLayout.CENTER)
+            add(bottomBar,                   BorderLayout.SOUTH)
+        }
+
+        return JSplitPane(JSplitPane.VERTICAL_SPLIT, topHalf, commitArea).apply {
+            resizeWeight = 0.75
         }
     }
 
@@ -222,11 +337,181 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 val out = try { get() } catch (e: Exception) { return }
                 stagedModel.clear(); unstagedModel.clear()
                 for (line in out.lines()) {
-                    if (line.length < 3) continue
+                    if (line.length < 3 || line.startsWith("##")) continue
                     val x  = line[0]; val y = line[1]; val file = line.substring(3)
                     if (x != ' ' && x != '?') stagedModel.addElement("$x $file")
                     if (y == 'M' || y == 'D' || y == '?') unstagedModel.addElement("$y $file")
                 }
+                stagedHeaderLabel.text   = "Staged files (${stagedModel.size()} files)"
+                unstagedHeaderLabel.text = "Unstaged files (${unstagedModel.size()} files)"
+            }
+        }.execute()
+    }
+
+    // ── Diff display ──────────────────────────────────────────────────────────
+
+    private fun showFileStatus() {
+        mainCards.show(mainContainer, CARD_FILE_STATUS)
+        refreshFileStatus()
+    }
+
+    private fun showFileDiff(file: String, staged: Boolean) {
+        diffFileNameLabel.text = file
+        object : SwingWorker<String, Void>() {
+            override fun doInBackground(): String =
+                (if (staged) git.diffStaged(file) else git.diff(file)).output
+            override fun done() {
+                val diffText = try { get() } catch (e: Exception) { return }
+                diffScrollPane.setViewportView(buildDiffView(diffText, staged, file))
+                diffScrollPane.revalidate()
+            }
+        }.execute()
+    }
+
+    private data class DiffHunk(val header: String, val lines: List<String>)
+    private data class ParsedDiff(val fileHeader: List<String>, val hunks: List<DiffHunk>)
+
+    private fun parseDiff(diffText: String): ParsedDiff {
+        val allLines   = diffText.lines()
+        val fileHeader = allLines.takeWhile { !it.startsWith("@@") }
+        val hunks      = mutableListOf<DiffHunk>()
+        var hunkHeader = ""
+        var hunkLines  = mutableListOf<String>()
+        for (line in allLines.drop(fileHeader.size)) {
+            if (line.startsWith("@@")) {
+                if (hunkHeader.isNotEmpty()) hunks.add(DiffHunk(hunkHeader, hunkLines.toList()))
+                hunkHeader = line
+                hunkLines  = mutableListOf(line)
+            } else if (hunkHeader.isNotEmpty()) {
+                hunkLines.add(line)
+            }
+        }
+        if (hunkHeader.isNotEmpty()) hunks.add(DiffHunk(hunkHeader, hunkLines.toList()))
+        return ParsedDiff(fileHeader, hunks)
+    }
+
+    private fun buildPatch(fileHeader: List<String>, hunk: DiffHunk) = buildString {
+        fileHeader.forEach { appendLine(it) }
+        hunk.lines.forEach { appendLine(it) }
+    }
+
+    private fun buildDiffView(diffText: String, staged: Boolean, file: String): JPanel {
+        val container = JPanel().apply {
+            layout     = BoxLayout(this, BoxLayout.Y_AXIS)
+            background = UIManager.getColor("EditorPane.background") ?: Color(0x2B, 0x2B, 0x2B)
+        }
+        if (diffText.isBlank()) {
+            container.add(JLabel(if (staged) "No staged changes" else "No unstaged changes").apply {
+                border     = BorderFactory.createEmptyBorder(12, 12, 12, 12)
+                foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+                alignmentX = Component.LEFT_ALIGNMENT
+            })
+            return container
+        }
+        val parsed = parseDiff(diffText)
+        parsed.hunks.forEachIndexed { idx, hunk ->
+            val headerInfo = hunk.header.substringAfter("@@").substringBefore("@@").trim()
+            val hunkLabel  = JLabel("Hunk ${idx + 1}:  $headerInfo").apply {
+                border     = BorderFactory.createEmptyBorder(6, 8, 4, 8)
+                font       = font.deriveFont(Font.BOLD, 11f)
+                foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+            }
+            val stageHunkBtn   = JButton(if (staged) "Unstage hunk" else "Stage hunk")
+            val discardHunkBtn = JButton("Discard hunk").apply { isVisible = !staged }
+
+            stageHunkBtn.addActionListener {
+                val patch = buildPatch(parsed.fileHeader, hunk)
+                val r = if (staged) git.applyPatch(patch, cached = true, reverse = true)
+                        else        git.applyPatch(patch, cached = true, reverse = false)
+                if (!r.success) showError("Stage hunk failed", r.output)
+                else { showFileDiff(file, staged); refreshFileStatus() }
+            }
+            discardHunkBtn.addActionListener {
+                val patch = buildPatch(parsed.fileHeader, hunk)
+                val r = git.applyPatch(patch, cached = false, reverse = true)
+                if (!r.success) showError("Discard hunk failed", r.output)
+                else { showFileDiff(file, staged); refreshFileStatus() }
+            }
+
+            val hunkBtnRow = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 2)).apply { isOpaque = false }
+            if (!staged) hunkBtnRow.add(discardHunkBtn)
+            hunkBtnRow.add(stageHunkBtn)
+
+            val hunkHeaderRow = JPanel(BorderLayout()).apply {
+                isOpaque    = false
+                alignmentX  = Component.LEFT_ALIGNMENT
+                maximumSize = Dimension(Int.MAX_VALUE, 36)
+                add(hunkLabel, BorderLayout.WEST)
+                add(hunkBtnRow, BorderLayout.EAST)
+            }
+            container.add(hunkHeaderRow)
+            container.add(buildHunkTextPane(hunk.lines).apply { alignmentX = Component.LEFT_ALIGNMENT })
+            container.add(Box.createVerticalStrut(4))
+        }
+        container.add(Box.createVerticalGlue())
+        return container
+    }
+
+    private fun buildHunkTextPane(lines: List<String>): JTextPane {
+        val addAttr = SimpleAttributeSet().also {
+            StyleConstants.setBackground(it, Color(0x1B, 0x3A, 0x27))
+            StyleConstants.setForeground(it, UIManager.getColor("Label.foreground") ?: Color.WHITE)
+        }
+        val removeAttr = SimpleAttributeSet().also {
+            StyleConstants.setBackground(it, Color(0x3A, 0x1B, 0x1B))
+            StyleConstants.setForeground(it, UIManager.getColor("Label.foreground") ?: Color.WHITE)
+        }
+        val hunkAttr = SimpleAttributeSet().also {
+            StyleConstants.setForeground(it, Color(0x4F, 0xC3, 0xF7))
+        }
+        val baseAttr = SimpleAttributeSet().also {
+            StyleConstants.setForeground(it, UIManager.getColor("Label.foreground") ?: Color.WHITE)
+        }
+        return JTextPane().apply {
+            isEditable = false
+            font       = Font(Font.MONOSPACED, Font.PLAIN, 12)
+            for (line in lines) {
+                val attr = when {
+                    line.startsWith("+") && !line.startsWith("+++") -> addAttr
+                    line.startsWith("-") && !line.startsWith("---") -> removeAttr
+                    line.startsWith("@@")                           -> hunkAttr
+                    else                                            -> baseAttr
+                }
+                try { styledDocument.insertString(styledDocument.length, line + "\n", attr) }
+                catch (_: Exception) {}
+            }
+        }
+    }
+
+    // ── Inline commit ─────────────────────────────────────────────────────────
+
+    private fun doCommit() {
+        val msg = commitMsgField.text.trim()
+        if (msg.isEmpty() && !amendCheckBox.isSelected) {
+            showError("Commit", "Commit message is required"); return
+        }
+        object : SwingWorker<Pair<Boolean, String>, Void>() {
+            override fun doInBackground(): Pair<Boolean, String> {
+                val result = when {
+                    amendCheckBox.isSelected && msg.isEmpty() -> git.commitAmend()
+                    amendCheckBox.isSelected                  -> git.commitAmend(msg)
+                    else                                      -> git.commit(msg)
+                }
+                if (!result.success) return false to result.output
+                if (pushImmediatelyCheckBox.isSelected) {
+                    val push = git.push()
+                    return push.success to push.output
+                }
+                return true to ""
+            }
+            override fun done() {
+                val (ok, out) = try { get() } catch (e: Exception) { false to (e.message ?: "") }
+                if (!ok) { showError("Commit failed", out); return }
+                commitMsgField.text            = ""
+                amendCheckBox.isSelected       = false
+                pushImmediatelyCheckBox.isSelected = false
+                refresh()
+                refreshFileStatus()
             }
         }.execute()
     }
@@ -371,8 +656,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
         workspacePanel.add(sidebarSectionHeader("WORKSPACE"))
         workspacePanel.add(workspaceItem("File Status", MaterialDesign.MDI_FILE_DOCUMENT) {
-            mainCards.show(mainContainer, CARD_FILE_STATUS)
-            refreshFileStatus()
+            showFileStatus()
         })
         workspacePanel.add(workspaceItem("History", MaterialDesign.MDI_HISTORY) {
             mainCards.show(mainContainer, CARD_HISTORY)

@@ -59,6 +59,7 @@ class Git(val repo: String) {
     fun diff(path: String? = null) = if (path != null) git("--no-pager", "diff", "--", path) else git("--no-pager", "diff")
     fun diffStaged(path: String? = null) = if (path != null) git("--no-pager", "diff", "--cached", "--", path) else git("--no-pager", "diff", "--cached")
     fun remoteUrl(remote: String = "origin") = git("config", "--get", "remote.$remote.url")
+    fun configGet(key: String)               = git("config", "--get", key)
 
     /** Number of local commits not yet pushed to upstream (returns "0" on failure). */
     fun unpushedCount() = git("rev-list", "--count", "@{u}..HEAD")
@@ -87,6 +88,21 @@ class Git(val repo: String) {
     fun restore(fileName: String) = git("restore", "--", fileName)
     fun unstage(fileName: String) = git("restore", "--staged", "--", fileName)
     fun unstageAll()              = git("restore", "--staged", ".")
+
+    /** Apply a unified diff patch. Pass [cached]=true to stage, [reverse]=true to undo. */
+    fun applyPatch(patch: String, cached: Boolean = false, reverse: Boolean = false): Command {
+        val tmp = java.io.File.createTempFile("gitnarwhal_", ".patch")
+        return try {
+            tmp.writeText(patch)
+            val args = mutableListOf("apply", "--whitespace=nowarn")
+            if (cached)  args += "--cached"
+            if (reverse) args += "--reverse"
+            args += tmp.absolutePath
+            git(*args.toTypedArray())
+        } finally {
+            tmp.delete()
+        }
+    }
     //endregion
 
     //region commit / sync
