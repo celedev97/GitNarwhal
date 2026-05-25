@@ -264,10 +264,18 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         bar.add(iconBtn(MaterialDesign.MDI_ARROW_UP_BOLD,  "Push")     { push() })
         bar.add(iconBtn(MaterialDesign.MDI_GIT,            "Commit")   { commit() })
         bar.add(iconBtn(MaterialDesign.MDI_ARCHIVE,        "Stash")    { stashCurrentChanges() })
-        bar.addSeparator()
+
+        // push remaining buttons to the right
+        bar.add(Box.createHorizontalGlue())
+
         bar.add(iconBtn(MaterialDesign.MDI_CONSOLE,        "Terminal") { openTerminal() })
         bar.add(iconBtn(MaterialDesign.MDI_FOLDER,         "Explorer") { openExplorer() })
         bar.add(iconBtn(MaterialDesign.MDI_EARTH,          "Remote")   { openRemote() })
+        bar.addSeparator()
+        bar.add(iconBtn(MaterialDesign.MDI_SETTINGS,       "Settings") {
+            val win = SwingUtilities.getWindowAncestor(this)
+            SettingsDialog(win as? java.awt.Frame).isVisible = true
+        })
         return bar
     }
 
