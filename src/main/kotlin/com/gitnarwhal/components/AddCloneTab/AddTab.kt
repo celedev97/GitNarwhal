@@ -14,7 +14,6 @@ import javax.swing.*
 
 class AddTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
 
-    // path field backed by the shared document — stays in sync with CreateTab
     private val pathField = JTextField(addCloneTab.sharedPathDoc, "", 0)
     val nameField         = JTextField()
 
@@ -22,17 +21,16 @@ class AddTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
         isOpaque = false
 
         val form = JPanel().apply {
-            isOpaque = false
-            layout   = BoxLayout(this, BoxLayout.Y_AXIS)
+            isOpaque   = false
+            layout     = BoxLayout(this, BoxLayout.Y_AXIS)
+            alignmentX = 0f
         }
 
-        // ── Title ─────────────────────────────────────────────────────────────
-        form.add(label("Add a repository", size = 26f, bold = true))
+        form.add(title("Add a repository"))
         form.add(Box.createVerticalStrut(6))
-        form.add(label("Choose a working copy repository folder to add to GitNarwhal", size = 12f))
+        form.add(subtitle("Choose a working copy repository folder to add to GitNarwhal"))
         form.add(Box.createVerticalStrut(28))
 
-        // ── Path row ──────────────────────────────────────────────────────────
         pathField.putClientProperty("JTextField.placeholderText", "Working Copy Path:")
         val browseBtn = JButton("Browse")
         browseBtn.addActionListener {
@@ -43,26 +41,22 @@ class AddTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
         form.add(pathRow(pathField, browseBtn))
         form.add(Box.createVerticalStrut(10))
 
-        // ── Name ──────────────────────────────────────────────────────────────
         nameField.putClientProperty("JTextField.placeholderText", "Name:")
+        nameField.alignmentX  = 0f
         nameField.maximumSize = Dimension(Int.MAX_VALUE, nameField.preferredSize.height)
         form.add(nameField)
         form.add(Box.createVerticalStrut(20))
 
-        // ── Action button ─────────────────────────────────────────────────────
         val addBtn = accentButton("Add")
+        addBtn.alignmentX = 0f
         addBtn.addActionListener { run() }
-        val btnRow = JPanel(BorderLayout()).apply { isOpaque = false }
-        btnRow.add(addBtn, BorderLayout.WEST)
-        form.add(btnRow)
+        form.add(addBtn)
 
-        // ── Outer wrapper with padding ────────────────────────────────────────
-        val outer = JPanel(BorderLayout()).apply {
+        add(JPanel(BorderLayout()).apply {
             isOpaque = false
             border   = BorderFactory.createEmptyBorder(40, 48, 40, 48)
-        }
-        outer.add(form, BorderLayout.NORTH)
-        add(outer, BorderLayout.CENTER)
+            add(form, BorderLayout.NORTH)
+        }, BorderLayout.CENTER)
     }
 
     fun run() {
@@ -86,22 +80,31 @@ class AddTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
 
 // ── Shared helpers (package-private) ─────────────────────────────────────────
 
-internal fun label(text: String, size: Float, bold: Boolean = false): JLabel =
-    JLabel(text).apply {
-        font      = font.deriveFont(if (bold) Font.BOLD else Font.PLAIN, size)
-        alignmentX = 0f
-    }
+internal fun title(text: String): JLabel = JLabel(text).apply {
+    font            = font.deriveFont(Font.BOLD, 26f)
+    alignmentX      = 0f
+    horizontalAlignment = SwingConstants.LEFT
+}
+
+internal fun subtitle(text: String): JLabel = JLabel(text).apply {
+    font            = font.deriveFont(Font.PLAIN, 12f)
+    alignmentX      = 0f
+    horizontalAlignment = SwingConstants.LEFT
+    foreground      = UIManager.getColor("Label.disabledForeground")
+}
 
 internal fun pathRow(field: JTextField, browseBtn: JButton): JPanel {
     field.maximumSize = Dimension(Int.MAX_VALUE, field.preferredSize.height)
-    val row = JPanel(BorderLayout(8, 0)).apply { isOpaque = false; maximumSize = Dimension(Int.MAX_VALUE, field.preferredSize.height + 2) }
-    row.add(field,     BorderLayout.CENTER)
-    row.add(browseBtn, BorderLayout.EAST)
-    return row
+    return JPanel(BorderLayout(8, 0)).apply {
+        isOpaque    = false
+        alignmentX  = 0f
+        maximumSize = Dimension(Int.MAX_VALUE, field.preferredSize.height + 2)
+        add(field,     BorderLayout.CENTER)
+        add(browseBtn, BorderLayout.EAST)
+    }
 }
 
-internal fun accentButton(text: String): JButton =
-    JButton(text).apply {
-        putClientProperty("FlatLaf.style",
-            "background: #1A6FBF; foreground: #FFFFFF; hoverBackground: #2078CC; pressedBackground: #155DA0")
-    }
+internal fun accentButton(text: String): JButton = JButton(text).apply {
+    putClientProperty("FlatLaf.style",
+        "background: #1A6FBF; foreground: #FFFFFF; hoverBackground: #2078CC; pressedBackground: #155DA0")
+}

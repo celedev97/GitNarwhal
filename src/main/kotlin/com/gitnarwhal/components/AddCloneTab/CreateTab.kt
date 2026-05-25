@@ -12,7 +12,6 @@ import javax.swing.*
 
 class CreateTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
 
-    // path field backed by the shared document — stays in sync with AddTab
     private val pathField = JTextField(addCloneTab.sharedPathDoc, "", 0)
     val nameField         = JTextField()
 
@@ -20,40 +19,36 @@ class CreateTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
         isOpaque = false
 
         val form = JPanel().apply {
-            isOpaque = false
-            layout   = BoxLayout(this, BoxLayout.Y_AXIS)
+            isOpaque   = false
+            layout     = BoxLayout(this, BoxLayout.Y_AXIS)
+            alignmentX = 0f
         }
 
-        // ── Title ─────────────────────────────────────────────────────────────
-        form.add(label("Create a repository", size = 26f, bold = true))
+        form.add(title("Create a repository"))
         form.add(Box.createVerticalStrut(28))
 
-        // ── Path row ──────────────────────────────────────────────────────────
         pathField.putClientProperty("JTextField.placeholderText", "Destination Path:")
         val browseBtn = JButton("Browse")
         browseBtn.addActionListener { addCloneTab.browseForPath(this) }
         form.add(pathRow(pathField, browseBtn))
         form.add(Box.createVerticalStrut(10))
 
-        // ── Name ──────────────────────────────────────────────────────────────
         nameField.putClientProperty("JTextField.placeholderText", "Name:")
+        nameField.alignmentX  = 0f
         nameField.maximumSize = Dimension(Int.MAX_VALUE, nameField.preferredSize.height)
         form.add(nameField)
         form.add(Box.createVerticalStrut(20))
 
-        // ── Action button ─────────────────────────────────────────────────────
         val createBtn = accentButton("Create")
+        createBtn.alignmentX = 0f
         createBtn.addActionListener { run() }
-        val btnRow = JPanel(BorderLayout()).apply { isOpaque = false }
-        btnRow.add(createBtn, BorderLayout.WEST)
-        form.add(btnRow)
+        form.add(createBtn)
 
-        val outer = JPanel(BorderLayout()).apply {
+        add(JPanel(BorderLayout()).apply {
             isOpaque = false
             border   = BorderFactory.createEmptyBorder(40, 48, 40, 48)
-        }
-        outer.add(form, BorderLayout.NORTH)
-        add(outer, BorderLayout.CENTER)
+            add(form, BorderLayout.NORTH)
+        }, BorderLayout.CENTER)
     }
 
     fun run() {
