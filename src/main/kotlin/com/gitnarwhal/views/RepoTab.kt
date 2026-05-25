@@ -1046,6 +1046,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             val topLines = laneHashes.indices
                 .filter { laneHashes[it] != null }
                 .map { it to laneColors[it] }
+            val topSet = topLines.map { it.first }.toSet()  // lanes active before this row
 
             val laneIdx = laneHashes.indexOf(commit.hash)
             val col: Int
@@ -1081,8 +1082,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 }
             }
 
+            // Exclude newly-created fork target lanes: their vertical starts in the NEXT row.
+            // The fork diagonal already connects the commit dot to them; a mid-starting
+            // vertical in this row would create the phantom "stub" line.
+            val newForkLanes = forkLines.map { it.first }.filter { it !in topSet }.toSet()
             val bottomLines = laneHashes.indices
-                .filter { laneHashes[it] != null }
+                .filter { laneHashes[it] != null && it !in newForkLanes }
                 .map { it to laneColors[it] }
 
             commit.graphTopLines    = topLines
