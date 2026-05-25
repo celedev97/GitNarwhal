@@ -32,7 +32,14 @@ repositories {
 apply plugin: JREPackager
 
 mainClassName = "com.gitnarwhal.MainKt"
-version = project.findProperty("appVersion") ?: "dev"
+def gitVersion = {
+    try {
+        def p = 'git describe --tags --match v* --abbrev=0'.execute()
+        p.waitFor()
+        p.exitValue() == 0 ? p.text.trim().replaceFirst('^v', '') : 'dev'
+    } catch (e) { 'dev' }
+}
+version = project.findProperty("appVersion") ?: gitVersion()
 
 jrePackager{
     jreVersion = project.ext.get("jreVersion")
