@@ -105,6 +105,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private val diffScrollPane   = JScrollPane()
     private val diffFileNameLabel = JLabel(" ", SwingConstants.LEFT)
 
+    private val authorLabel = JLabel(" ").apply {
+        border     = BorderFactory.createEmptyBorder(0, 0, 4, 0)
+        font       = font.deriveFont(Font.PLAIN, 11f)
+        foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+    }
+
     private val commitMsgField          = JTextArea(4, 40).apply { lineWrap = true; wrapStyleWord = true }
     private val amendCheckBox           = JCheckBox("Amend latest commit")
     private val pushImmediatelyCheckBox = JCheckBox("Push changes immediately to origin/main")
@@ -301,18 +307,6 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
 
         // ── Commit area (bottom) ──────────────────────────────────────────────
-        val userName  = git.configGet("user.name").output.trim()
-        val userEmail = git.configGet("user.email").output.trim()
-        val authorStr = when {
-            userName.isNotBlank()  -> "$userName <$userEmail>"
-            userEmail.isNotBlank() -> userEmail
-            else                   -> "Unknown author"
-        }
-        val authorLabel = JLabel(authorStr).apply {
-            border     = BorderFactory.createEmptyBorder(0, 0, 4, 0)
-            font       = font.deriveFont(Font.PLAIN, 11f)
-            foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
-        }
 
         commitMsgField.putClientProperty("JTextField.placeholderText", "Commit message")
         val commitBtnBottom = JButton("Commit").apply {
@@ -368,7 +362,18 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     private fun showFileStatus() {
         mainCards.show(mainContainer, CARD_FILE_STATUS)
+        refreshAuthorLabel()
         refreshFileStatus()
+    }
+
+    private fun refreshAuthorLabel() {
+        val name  = git.configGet("user.name").output.trim()
+        val email = git.configGet("user.email").output.trim()
+        authorLabel.text = when {
+            name.isNotBlank()  -> "$name <$email>"
+            email.isNotBlank() -> email
+            else               -> "Unknown author"
+        }
     }
 
     private fun showFileDiff(file: String, staged: Boolean) {
