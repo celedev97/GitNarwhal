@@ -40,11 +40,16 @@ object UpdateService {
     // ── Public entry point — call once after UI is shown ──────────────────────
     fun checkForUpdates(owner: Window?) {
         if (!Settings.autoUpdate) return
-        if (!VERSION_REGEX.containsMatchIn(currentVersion)) {
-            // dev build — skip
-            return
-        }
+        if (!VERSION_REGEX.containsMatchIn(currentVersion)) return  // dev build
+        fetchAndNotify(owner, silent = true)
+    }
 
+    // ── Manual trigger from Help menu — always runs, shows "up to date" ───────
+    fun checkForUpdatesManual(owner: Window?) {
+        fetchAndNotify(owner, silent = false)
+    }
+
+    private fun fetchAndNotify(owner: Window?, silent: Boolean) {
         object : SwingWorker<JSONObject?, Void>() {
             override fun doInBackground(): JSONObject? {
                 return try {
@@ -64,12 +69,27 @@ object UpdateService {
             }
 
             override fun done() {
-                val release = try { get() } catch (_: Exception) { null } ?: return
-                val newTag  = release.optString("tag_name", "") .ifBlank { return }
+                val release = try { get() } catch (_: Exception) { null }
+                if (release == null) {
+                    if (!silent) JOptionPane.showMessageDialog(owner,
+                        "Could not reach GitHub. Check your connection.",
+                        "Update check failed", JOptionPane.WARNING_MESSAGE)
+                    return
+                }
+                val newTag  = release.optString("tag_name", "").ifBlank {
+                    if (!silent) JOptionPane.showMessageDialog(owner,
+                        "No release found.", "Update check", JOptionPane.INFORMATION_MESSAGE)
+                    return
+                }
                 val htmlUrl = release.optString("html_url", "")
 
-                if (newTag == Settings.ignoredUpdateVersion) return
-                if (!isNewer(newTag, currentVersion))        return
+                if (!isNewer(newTag, currentVersion)) {
+                    if (!silent) JOptionPane.showMessageDialog(owner,
+                        "GitNarwhal $currentVersion is up to date.",
+                        "No updates", JOptionPane.INFORMATION_MESSAGE)
+                    return
+                }
+                if (silent && newTag == Settings.ignoredUpdateVersion) return
 
                 val isWindows    = System.getProperty("os.name", "").lowercase().contains("win")
                 val winAsset     = if (isWindows) findWindowsAsset(release.optJSONArray("assets")) else null
@@ -78,8 +98,7 @@ object UpdateService {
                 val options = arrayOf(installLabel, "Ask me later", "Skip this version")
                 val choice  = JOptionPane.showOptionDialog(
                     owner,
-                    "GitNarwhal $newTag is available  (current: $currentVersion)\n\n" +
-                    "Would you like to update?",
+                    "GitNarwhal $newTag is available  (current: $currentVersion)\n\nWould you like to update?",
                     "Update available",
                     JOptionPane.DEFAULT_OPTION,
                     JOptionPane.INFORMATION_MESSAGE,
