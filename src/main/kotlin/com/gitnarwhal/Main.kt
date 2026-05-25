@@ -70,6 +70,22 @@ private fun buildMenuBar(frame: JFrame, mainView: MainView): JMenuBar {
     }
     editMenu.add(settings)
 
-    bar.add(fileMenu); bar.add(editMenu)
+    val helpMenu = JMenu("Help")
+    val checkUpdates = JMenuItem("Check for Updates…").apply {
+        addActionListener { UpdateService.checkForUpdatesManual(frame) }
+    }
+    val about = JMenuItem("About GitNarwhal…").apply {
+        addActionListener {
+            javax.swing.JOptionPane.showMessageDialog(
+                frame,
+                "GitNarwhal\nVersion: ${UpdateService.currentVersion}\n\nhttps://github.com/celedev97/GitNarwhal",
+                "About GitNarwhal",
+                javax.swing.JOptionPane.INFORMATION_MESSAGE
+            )
+        }
+    }
+    helpMenu.add(checkUpdates); helpMenu.addSeparator(); helpMenu.add(about)
+
+    bar.add(fileMenu); bar.add(editMenu); bar.add(helpMenu)
     return bar
 }
