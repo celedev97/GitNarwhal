@@ -7,22 +7,18 @@ on:
   pull_request:
 
 permissions:
-  contents: write   # needed to create GitHub releases
+  contents: write
 
 jobs:
 
-  # ── Tests ───────────────────────────────────────────────────────────────────
+  # ── Tests (every push / PR) ─────────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
+        with: { distribution: temurin, java-version: '21' }
       - uses: actions/cache@v4
         with:
           path: |
@@ -30,58 +26,132 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
+      - run: ./gradlew test --no-daemon
 
-      - name: Run tests
-        run: ./gradlew test --no-daemon
-
-  # ── Release (tags only) ─────────────────────────────────────────────────────
-  release:
+  # ── Linux + Mac bundles (tag only) ─────────────────────────────────────────
+  build-linux-mac:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
+        with: { distribution: temurin, java-version: '21' }
       - uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
             .gradle/jre
-          key: ${{ runner.os }}-gradle-release-${{ hashFiles('**/*.gradle*', 'gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: ${{ runner.os }}-gradle-release-
+          key: linux-gradle-jre-${{ hashFiles('**/*.gradle*') }}
+          restore-keys: linux-gradle-jre-
 
-      - name: Derive version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Derive version
+        id: ver
+        run: echo "V=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build all platform bundles
+      - name: Build Linux + Mac bundles
         run: |
           ./gradlew \
-            -PappVersion=${{ steps.version.outputs.VERSION }} \
-            win64app linux64app mac64app \
-            --no-daemon --stacktrace
+            "-PappVersion=${{ steps.ver.outputs.V }}" \
+            linux64app mac64app \
+            --no-daemon
 
-      - name: Package bundles as ZIPs
+      - name: Package as ZIPs
         run: |
           cd build/app
-          zip -r ../../gitnarwhal-${{ steps.version.outputs.VERSION }}-windows-x64.zip  windows_x64/
-          zip -r ../../gitnarwhal-${{ steps.version.outputs.VERSION }}-linux-x64.zip    linux_x64/
-          zip -r ../../gitnarwhal-${{ steps.version.outputs.VERSION }}-mac-x64.zip      mac_x64/
+          zip -r "../../gitnarwhal-${{ steps.ver.outputs.V }}-linux-x64.zip"  linux_x64/
+          zip -r "../../gitnarwhal-${{ steps.ver.outputs.V }}-mac-x64.zip"    mac_x64/
 
-      - name: Create GitHub Release
-        uses: ncipollo/release-action@v1
+      - uses: actions/upload-artifact@v4
         with:
-          tag:          ${{ github.ref_name }}
-          name:         ${{ github.ref_name }}
-          artifacts:    "gitnarwhal-*.zip"
+          name: linux-mac-zips
+          path: gitnarwhal-*.zip
+
+  # ── Windows installer (tag only) ───────────────────────────────────────────
+  build-windows:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~\.gradle\caches
+            ~\.gradle\wrapper
+            .gradle\jre
+          key: windows-gradle-jre-${{ hashFiles('**/*.gradle*') }}
+          restore-keys: windows-gradle-jre-
+
+      - name: Derive version
+        id: ver
+        shell: bash
+        run: echo "V=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Windows bundle
+        run: .\gradlew.bat "-PappVersion=${{ steps.ver.outputs.V }}" win64app --no-daemon
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Stage installer files
+        shell: pwsh
+        run: |
+          $v   = "${{ steps.ver.outputs.V }}"
+          $dir = "build\innosetup"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+
+          # Copy bundle contents
+          Copy-Item -Recurse "build\app\windows_x64\*" "$dir\"
+
+          # Copy Inno Setup script and icon
+          Copy-Item "gradle\innosetup\inno.iss" "$dir\inno.iss"
+          Copy-Item "gradle\innosetup\icon.ico"  "$dir\icon.ico"
+
+          # Inject version
+          (Get-Content "$dir\inno.iss") `
+            -replace '#define MyAppVersion "[^"]+"', "#define MyAppVersion `"$v`"" |
+            Set-Content "$dir\inno.iss"
+
+      - name: Run Inno Setup
+        shell: cmd
+        run: >
+          "%programfiles(x86)%\Inno Setup 6\ISCC.exe"
+          "build\innosetup\inno.iss"
+
+      - name: Rename output
+        shell: pwsh
+        run: |
+          $v = "${{ steps.ver.outputs.V }}"
+          Rename-Item "build\innosetup\Output\gitnarwhal-setup.exe" `
+                      "gitnarwhal-$v-windows-x64-setup.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: build\innosetup\Output\gitnarwhal-*-setup.exe
+
+  # ── GitHub Release ──────────────────────────────────────────────────────────
+  release:
+    needs: [ build-linux-mac, build-windows ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: linux-mac-zips,     path: dist }
+      - uses: actions/download-artifact@v4
+        with: { name: windows-installer,  path: dist }
+
+      - uses: ncipollo/release-action@v1
+        with:
+          tag:                  ${{ github.ref_name }}
+          name:                 ${{ github.ref_name }}
+          artifacts:            "dist/*"
           generateReleaseNotes: true
-          prerelease:   false
-          token:        ${{ secrets.GITHUB_TOKEN }}
+          prerelease:           false
+          token:                ${{ secrets.GITHUB_TOKEN }}
