@@ -83,6 +83,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         componentPopupMenu = buildStashPopup()
     }
 
+    // ── File Status models — MUST be declared before init ────────────────────
+    private val stagedModel   = DefaultListModel<String>()
+    private val unstagedModel = DefaultListModel<String>()
+
     // ── Badge toolbar buttons ─────────────────────────────────────────────────
     private val commitBtn = BadgeButton(MaterialDesign.MDI_CHECK_CIRCLE, "Commit") { commit() }
     private val pullBtn   = BadgeButton(MaterialDesign.MDI_ARROW_DOWN_BOLD, "Pull") { pull() }
@@ -147,8 +151,6 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     // ── File Status panel ─────────────────────────────────────────────────────
-    private val stagedModel   = DefaultListModel<String>()
-    private val unstagedModel = DefaultListModel<String>()
 
     private fun buildFileStatusPanel(): JComponent {
         val stagedList   = JList(stagedModel).apply { selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION }
