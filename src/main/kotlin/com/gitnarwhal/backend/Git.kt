@@ -60,6 +60,11 @@ class Git(val repo: String) {
     fun diffStaged(path: String? = null) = if (path != null) git("--no-pager", "diff", "--cached", "--", path) else git("--no-pager", "diff", "--cached")
     fun remoteUrl(remote: String = "origin") = git("config", "--get", "remote.$remote.url")
 
+    /** Number of local commits not yet pushed to upstream (returns "0" on failure). */
+    fun unpushedCount() = git("rev-list", "--count", "@{u}..HEAD")
+    /** Number of upstream commits not yet pulled (returns "0" on failure). */
+    fun unpulledCount() = git("rev-list", "--count", "HEAD..@{u}")
+
     fun show(commit: Commit) = show(commit.hash)
     fun show(commitHash: String) =
         git("--no-pager", "show", commitHash, "-s",
@@ -81,6 +86,7 @@ class Git(val repo: String) {
     fun addAll()                  = git("add", "-A")
     fun restore(fileName: String) = git("restore", "--", fileName)
     fun unstage(fileName: String) = git("restore", "--staged", "--", fileName)
+    fun unstageAll()              = git("restore", "--staged", ".")
     //endregion
 
     //region commit / sync
