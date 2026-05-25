@@ -1269,12 +1269,22 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
 
         // ── Apply to table ────────────────────────────────────────────────────
+        val previousHash = commitList.getOrNull(commitTable.selectedRow)?.hash
         commitList.clear(); commitList.addAll(localList)
         commitTableModel.fireTableDataChanged()
 
         val maxLanes = (localList.maxOfOrNull { it.x } ?: 0) + 1
         val colW = (maxLanes * CommitGraphCell.LANE_W + CommitGraphCell.H_OFFSET * 2).coerceIn(60, 300)
         commitTable.columnModel.getColumn(0).preferredWidth = colW
+
+        // Restore previous selection; fall back to row 0 (HEAD / uncommitted)
+        val targetRow = if (previousHash != null)
+            commitList.indexOfFirst { it.hash == previousHash }.takeIf { it >= 0 } ?: 0
+        else 0
+        if (commitList.isNotEmpty()) {
+            commitTable.selectionModel.setSelectionInterval(targetRow, targetRow)
+            commitTable.scrollRectToVisible(commitTable.getCellRect(targetRow, 0, true))
+        }
     }
 
     private fun parseRefs(decoration: String): List<RefInfo> {
