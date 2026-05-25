@@ -2,7 +2,10 @@ package com.gitnarwhal.views
 
 import com.gitnarwhal.backend.Commit
 import com.gitnarwhal.backend.Git
+import com.gitnarwhal.backend.RefInfo
+import com.gitnarwhal.backend.RefType
 import com.gitnarwhal.components.CommitDataPanel
+import com.gitnarwhal.components.CommitDescriptionCell
 import com.gitnarwhal.components.CommitGraphCell
 import com.gitnarwhal.components.ProgressDialog
 import com.gitnarwhal.utils.Command
@@ -43,12 +46,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         override fun getRowCount()                    = commitList.size
         override fun getColumnCount()                 = cols.size
         override fun getColumnName(col: Int)          = cols[col]
-        override fun getColumnClass(col: Int)         = if (col == 0) Commit::class.java else String::class.java
+        override fun getColumnClass(col: Int)         = if (col <= 1) Commit::class.java else String::class.java
         override fun isCellEditable(row: Int, col: Int) = false
         override fun getValueAt(row: Int, col: Int): Any {
             val c = commitList[row]
             return when (col) {
-                0 -> c; 1 -> c.title; 2 -> c.committerDate; 3 -> c.committer; 4 -> c.hash
+                0 -> c; 1 -> c; 2 -> c.committerDate; 3 -> c.committer; 4 -> c.hash
                 else -> ""
             }
         }
@@ -58,8 +61,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         autoResizeMode = JTable.AUTO_RESIZE_LAST_COLUMN
         selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
         rowHeight = 22
-        columnModel.getColumn(0).apply { cellRenderer = CommitGraphCell(); preferredWidth = 80 }
-        columnModel.getColumn(1).preferredWidth = 400
+        columnModel.getColumn(0).apply { cellRenderer = CommitGraphCell();        preferredWidth = 100 }
+        columnModel.getColumn(1).apply { cellRenderer = CommitDescriptionCell();  preferredWidth = 400 }
         columnModel.getColumn(2).preferredWidth = 140
         columnModel.getColumn(3).preferredWidth = 160
         columnModel.getColumn(4).preferredWidth = 80
@@ -163,10 +166,23 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         refresh()
     }
 
-    // ── Card constants ────────────────────────────────────────────────────────
+    // ── Card constants + graph palette ───────────────────────────────────────
     companion object {
         private const val CARD_HISTORY     = "history"
         private const val CARD_FILE_STATUS = "fileStatus"
+
+        val GRAPH_PALETTE = listOf(
+            Color(0x4F, 0xC3, 0xF7),  // sky blue
+            Color(0x81, 0xC7, 0x84),  // green
+            Color(0xFF, 0xB7, 0x4D),  // amber
+            Color(0xF0, 0x62, 0x92),  // pink
+            Color(0xCE, 0x93, 0xD8),  // lavender
+            Color(0x80, 0xCB, 0xC4),  // teal
+            Color(0xFF, 0xF1, 0x76),  // yellow
+            Color(0xA5, 0xD6, 0xA7),  // light green
+            Color(0xFF, 0xCC, 0xBC),  // peach
+            Color(0xB0, 0xBE, 0xC5),  // blue-grey
+        )
     }
 
     // ── File Status panel ─────────────────────────────────────────────────────
@@ -988,9 +1004,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             val parentHashes  = f[1].split(" ").filter { it.isNotBlank() }
             val commit = localMap.getOrPut(hash) { Commit(hash, this) }
             commit.prePopulate(listOf(f[2], f[3], f[4], f[5], f[6], f[7]))
+            commit.refs = if (f.size > 8) parseRefs(f[8]) else emptyList()
             parentHashes.mapNotNull { localMap[it] }
                 .forEach { p -> p.childs.add(commit); commit.parents.add(p) }
         }
+        // ── Topological sort (post-order DFS, newest first → y=0 = top row) ──
         var y = 0
         fun dfs(c: Commit) {
             if (!c.explored) { c.explored = true; c.childs.forEach { dfs(it) }; c.y = y++ }
@@ -998,8 +1016,100 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         localMap.values.sortedBy { runCatching { -it.committerTimeStamp.toLong() }.getOrDefault(0L) }
             .forEach { dfs(it) }
         localMap.values.sortedBy { it.y }.forEach { localList.add(it) }
+
+        // ── Lane (x) assignment ───────────────────────────────────────────────
+        // laneHashes[i] = hash of next commit expected in lane i (null = free)
+        val laneHashes = mutableListOf<String?>()
+        val laneColors = mutableListOf<Color>()
+        var colorIdx = 0
+
+        fun nextColor() = GRAPH_PALETTE[colorIdx++ % GRAPH_PALETTE.size]
+
+        fun allocateLane(hash: String, color: Color): Int {
+            val free = laneHashes.indexOfFirst { it == null }
+            return if (free >= 0) {
+                laneHashes[free] = hash; laneColors[free] = color; free
+            } else {
+                laneHashes.add(hash); laneColors.add(color); laneHashes.size - 1
+            }
+        }
+
+        for (commit in localList) {
+            val topLines = laneHashes.indices
+                .filter { laneHashes[it] != null }
+                .map { it to laneColors[it] }
+
+            val laneIdx = laneHashes.indexOf(commit.hash)
+            val col: Int
+            if (laneIdx >= 0) {
+                col = laneIdx; commit.color = laneColors[col]
+            } else {
+                val c = nextColor(); col = allocateLane(commit.hash, c); commit.color = c
+            }
+            commit.x = col
+
+            val forkLines = mutableListOf<Pair<Int, Color>>()
+            if (commit.parents.isEmpty()) {
+                laneHashes[col] = null
+            } else {
+                val fp     = commit.parents[0]
+                val fpLane = laneHashes.indexOf(fp.hash)
+                when {
+                    fpLane >= 0 && fpLane != col -> {
+                        laneHashes[col] = null
+                        forkLines.add(fpLane to laneColors[fpLane])
+                    }
+                    fpLane < 0 -> laneHashes[col] = fp.hash
+                    // fpLane == col: already correct
+                }
+                for (parent in commit.parents.drop(1)) {
+                    val pLane = laneHashes.indexOf(parent.hash)
+                    if (pLane >= 0) {
+                        forkLines.add(pLane to laneColors[pLane])
+                    } else {
+                        val c = nextColor(); val nl = allocateLane(parent.hash, c)
+                        forkLines.add(nl to c)
+                    }
+                }
+            }
+
+            val bottomLines = laneHashes.indices
+                .filter { laneHashes[it] != null }
+                .map { it to laneColors[it] }
+
+            commit.graphTopLines    = topLines
+            commit.graphBottomLines = bottomLines
+            commit.graphForkLines   = forkLines
+        }
+
+        // ── Apply to table ────────────────────────────────────────────────────
         commitList.clear(); commitList.addAll(localList)
         commitTableModel.fireTableDataChanged()
+
+        val maxLanes = (localList.maxOfOrNull { it.x } ?: 0) + 1
+        val colW = (maxLanes * CommitGraphCell.LANE_W + CommitGraphCell.H_OFFSET * 2).coerceIn(60, 300)
+        commitTable.columnModel.getColumn(0).preferredWidth = colW
+    }
+
+    private fun parseRefs(decoration: String): List<RefInfo> {
+        if (decoration.isBlank()) return emptyList()
+        val result = mutableListOf<RefInfo>()
+        for (rawPart in decoration.split(", ")) {
+            val part = rawPart.trim()
+            when {
+                part.startsWith("HEAD -> ") -> {
+                    result.add(RefInfo("HEAD", RefType.HEAD))
+                    val branch = part.removePrefix("HEAD -> ")
+                    result.add(RefInfo(branch, if (branch.contains("/")) RefType.REMOTE_BRANCH else RefType.LOCAL_BRANCH))
+                }
+                part == "HEAD"           -> result.add(RefInfo("HEAD", RefType.HEAD))
+                part.startsWith("tag: ") -> result.add(RefInfo(part.removePrefix("tag: "), RefType.TAG))
+                part.contains(" -> ")    -> { /* remote HEAD alias e.g. origin/HEAD -> origin/main */ }
+                part.contains("/")       -> result.add(RefInfo(part, RefType.REMOTE_BRANCH))
+                part.isNotBlank()        -> result.add(RefInfo(part, RefType.LOCAL_BRANCH))
+            }
+        }
+        return result
     }
 
     private fun applyStashes(output: String) {

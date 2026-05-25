@@ -1,17 +1,29 @@
 package com.gitnarwhal.backend
 
 import com.gitnarwhal.views.RepoTab
+import java.awt.Color
 import java.lang.Exception
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.*
 import kotlin.reflect.KProperty
 
+// ── Ref decoration types ───────────────────────────────────────────────────────
+enum class RefType { HEAD, LOCAL_BRANCH, REMOTE_BRANCH, TAG }
+data class RefInfo(val name: String, val type: RefType)
+
 class Commit(var hash: String, val repoTab: RepoTab) {
     //data for drawing commit (consumed by Swing graph renderer)
     var explored: Boolean = false
     var y = -1
     var x = -1
+
+    // Graph lane colors & line data (assigned by RepoTab.applyCommits)
+    var color: Color                          = Color.GRAY
+    var refs: List<RefInfo>                   = emptyList()
+    var graphTopLines: List<Pair<Int, Color>> = emptyList()  // (lane, color) active above this row
+    var graphBottomLines: List<Pair<Int, Color>> = emptyList()  // (lane, color) active below this row
+    var graphForkLines: List<Pair<Int, Color>> = emptyList()  // (parentLane, color) diagonals from dot
 
     //region Git show parameters
     private val show = GitShow()

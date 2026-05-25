@@ -54,7 +54,7 @@ class Git(val repo: String) {
      */
     fun log() = git(
         "--no-pager", "log", "--all", "--date=unix",
-        "--pretty=format:%x1E%H%x1F%P%x1F%h%x1F%aN <%aE>%x1F%ad%x1F%cN <%cE>%x1F%cd%x1F%s"
+        "--pretty=format:%x1E%H%x1F%P%x1F%h%x1F%aN <%aE>%x1F%ad%x1F%cN <%cE>%x1F%cd%x1F%s%x1F%D"
     )
     fun diff(path: String? = null) = if (path != null) git("--no-pager", "diff", "--", path) else git("--no-pager", "diff")
     fun diffStaged(path: String? = null) = if (path != null) git("--no-pager", "diff", "--cached", "--", path) else git("--no-pager", "diff", "--cached")
