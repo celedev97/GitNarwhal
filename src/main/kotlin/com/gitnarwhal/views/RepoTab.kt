@@ -27,8 +27,6 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.*
 import javax.swing.table.AbstractTableModel
-import javax.swing.text.SimpleAttributeSet
-import javax.swing.text.StyleConstants
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeCellRenderer
 import javax.swing.tree.DefaultTreeModel
@@ -423,9 +421,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     private fun buildDiffView(diffText: String, staged: Boolean, file: String): JPanel {
+        val bgColor   = UIManager.getColor("EditorPane.background") ?: Color(0x2B, 0x2B, 0x2B)
         val container = JPanel().apply {
             layout     = BoxLayout(this, BoxLayout.Y_AXIS)
-            background = UIManager.getColor("EditorPane.background") ?: Color(0x2B, 0x2B, 0x2B)
+            background = bgColor
         }
         if (diffText.isBlank()) {
             container.add(JLabel(if (staged) "No staged changes" else "No unstaged changes").apply {
@@ -436,77 +435,166 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             return container
         }
         val parsed = parseDiff(diffText)
+        val actionVerb = if (staged) "Unstage" else "Stage"
+
         parsed.hunks.forEachIndexed { idx, hunk ->
             val headerInfo = hunk.header.substringAfter("@@").substringBefore("@@").trim()
-            val hunkLabel  = JLabel("Hunk ${idx + 1}:  $headerInfo").apply {
+            val hunkLabel  = JLabel("Hunk ${idx + 1} : $headerInfo").apply {
                 border     = BorderFactory.createEmptyBorder(6, 8, 4, 8)
                 font       = font.deriveFont(Font.BOLD, 11f)
                 foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
             }
-            val stageHunkBtn   = JButton(if (staged) "Unstage hunk" else "Stage hunk")
-            val discardHunkBtn = JButton("Discard hunk").apply { isVisible = !staged }
 
-            stageHunkBtn.addActionListener {
-                val patch = buildPatch(parsed.fileHeader, hunk)
+            val stageBtn   = JButton("$actionVerb hunk")
+            val discardBtn = JButton("Discard hunk")
+
+            val lineList = buildHunkLineList(hunk.lines, bgColor)
+
+            // Update button labels when selection changes
+            lineList.selectionModel.addListSelectionListener {
+                val hasLines = hasActionableSelection(lineList)
+                stageBtn.text   = if (hasLines) "$actionVerb lines" else "$actionVerb hunk"
+                discardBtn.text = if (hasLines) "Discard lines"     else "Discard hunk"
+            }
+
+            stageBtn.addActionListener {
+                val selIdx = lineList.selectedIndices.toSet()
+                val patch  = if (hasActionableSelection(lineList)) buildLinePatch(parsed.fileHeader, hunk, selIdx)
+                             else buildPatch(parsed.fileHeader, hunk)
                 val r = if (staged) git.applyPatch(patch, cached = true, reverse = true)
-                        else        git.applyPatch(patch, cached = true, reverse = false)
-                if (!r.success) showError("Stage hunk failed", r.output)
+                        else        git.applyPatch(patch, cached = true)
+                if (!r.success) showError("$actionVerb failed", r.output)
                 else { showFileDiff(file, staged); refreshFileStatus() }
             }
-            discardHunkBtn.addActionListener {
-                val patch = buildPatch(parsed.fileHeader, hunk)
+            discardBtn.addActionListener {
+                val selIdx = lineList.selectedIndices.toSet()
+                val patch  = if (hasActionableSelection(lineList)) buildLinePatch(parsed.fileHeader, hunk, selIdx)
+                             else buildPatch(parsed.fileHeader, hunk)
                 val r = git.applyPatch(patch, cached = false, reverse = true)
-                if (!r.success) showError("Discard hunk failed", r.output)
+                if (!r.success) showError("Discard failed", r.output)
                 else { showFileDiff(file, staged); refreshFileStatus() }
             }
 
-            val hunkBtnRow = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 2)).apply { isOpaque = false }
-            if (!staged) hunkBtnRow.add(discardHunkBtn)
-            hunkBtnRow.add(stageHunkBtn)
-
+            val hunkBtnRow = JPanel(FlowLayout(FlowLayout.RIGHT, 4, 2)).apply {
+                isOpaque = false
+                if (!staged) add(discardBtn)
+                add(stageBtn)
+            }
             val hunkHeaderRow = JPanel(BorderLayout()).apply {
                 isOpaque    = false
                 alignmentX  = Component.LEFT_ALIGNMENT
                 maximumSize = Dimension(Int.MAX_VALUE, 36)
-                add(hunkLabel, BorderLayout.WEST)
+                add(hunkLabel,  BorderLayout.WEST)
                 add(hunkBtnRow, BorderLayout.EAST)
             }
             container.add(hunkHeaderRow)
-            container.add(buildHunkTextPane(hunk.lines).apply { alignmentX = Component.LEFT_ALIGNMENT })
+            container.add(lineList.apply { alignmentX = Component.LEFT_ALIGNMENT })
             container.add(Box.createVerticalStrut(4))
         }
         container.add(Box.createVerticalGlue())
         return container
     }
 
-    private fun buildHunkTextPane(lines: List<String>): JTextPane {
-        val addAttr = SimpleAttributeSet().also {
-            StyleConstants.setBackground(it, Color(0x1B, 0x3A, 0x27))
-            StyleConstants.setForeground(it, UIManager.getColor("Label.foreground") ?: Color.WHITE)
-        }
-        val removeAttr = SimpleAttributeSet().also {
-            StyleConstants.setBackground(it, Color(0x3A, 0x1B, 0x1B))
-            StyleConstants.setForeground(it, UIManager.getColor("Label.foreground") ?: Color.WHITE)
-        }
-        val hunkAttr = SimpleAttributeSet().also {
-            StyleConstants.setForeground(it, Color(0x4F, 0xC3, 0xF7))
-        }
-        val baseAttr = SimpleAttributeSet().also {
-            StyleConstants.setForeground(it, UIManager.getColor("Label.foreground") ?: Color.WHITE)
-        }
-        return JTextPane().apply {
-            isEditable = false
-            font       = Font(Font.MONOSPACED, Font.PLAIN, 12)
-            for (line in lines) {
-                val attr = when {
-                    line.startsWith("+") && !line.startsWith("+++") -> addAttr
-                    line.startsWith("-") && !line.startsWith("---") -> removeAttr
-                    line.startsWith("@@")                           -> hunkAttr
-                    else                                            -> baseAttr
+    /** JList with per-line coloring and click-to-toggle selection. */
+    private fun buildHunkLineList(lines: List<String>, bgColor: Color): JList<String> {
+        val fgColor = UIManager.getColor("Label.foreground") ?: Color.WHITE
+        val addBg   = Color(0x1B, 0x3A, 0x27)
+        val remBg   = Color(0x3A, 0x1B, 0x1B)
+        val hunkFg  = Color(0x4F, 0xC3, 0xF7)
+        val monoFont = Font(Font.MONOSPACED, Font.PLAIN, 12)
+
+        val model = DefaultListModel<String>().apply { lines.forEach { addElement(it) } }
+
+        val list = object : JList<String>(model) {
+            private var wasSelected = false
+            private var clickedRow  = -1
+
+            override fun processMouseEvent(e: MouseEvent) {
+                // Capture pre-click state before super dispatches to listeners
+                if (e.id == MouseEvent.MOUSE_PRESSED && !e.isShiftDown && !e.isControlDown) {
+                    val idx = locationToIndex(e.point)
+                    clickedRow  = idx
+                    wasSelected = idx >= 0 && isSelectedIndex(idx)
                 }
-                try { styledDocument.insertString(styledDocument.length, line + "\n", attr) }
-                catch (_: Exception) {}
+                super.processMouseEvent(e)
+                // After default processing: if row was already selected, toggle it off
+                if (e.id == MouseEvent.MOUSE_RELEASED && !e.isShiftDown && !e.isControlDown) {
+                    if (wasSelected && clickedRow >= 0) removeSelectionInterval(clickedRow, clickedRow)
+                    wasSelected = false; clickedRow = -1
+                }
             }
+        }
+        list.selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
+        list.background    = bgColor
+        list.font          = monoFont
+
+        list.setCellRenderer(object : DefaultListCellRenderer() {
+            override fun getListCellRendererComponent(
+                list: JList<*>, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean
+            ): Component {
+                val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
+                val line  = value as? String ?: ""
+                label.font = monoFont
+                if (!isSelected) {
+                    when {
+                        line.startsWith("+") && !line.startsWith("+++") ->
+                            { label.background = addBg; label.foreground = fgColor }
+                        line.startsWith("-") && !line.startsWith("---") ->
+                            { label.background = remBg; label.foreground = fgColor }
+                        line.startsWith("@@") ->
+                            { label.background = bgColor; label.foreground = hunkFg }
+                        else ->
+                            { label.background = bgColor; label.foreground = fgColor }
+                    }
+                }
+                return label
+            }
+        })
+        return list
+    }
+
+    /** True if any selected row in [list] is a diff +/- line (not context/header). */
+    private fun hasActionableSelection(list: JList<String>): Boolean =
+        list.selectedIndices.any { i ->
+            val line = list.model.getElementAt(i)
+            (line.startsWith("+") && !line.startsWith("+++")) ||
+            (line.startsWith("-") && !line.startsWith("---"))
+        }
+
+    /**
+     * Build a minimal valid unified diff from only the selected lines.
+     * Unselected `-` lines become context (don't stage the removal).
+     * Unselected `+` lines are dropped (don't stage the addition).
+     */
+    private fun buildLinePatch(fileHeader: List<String>, hunk: DiffHunk, selectedIndices: Set<Int>): String {
+        val headerMatch = Regex("""@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@""").find(hunk.header)
+        val oldStart    = headerMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
+        val newStart    = headerMatch?.groupValues?.get(2)?.toIntOrNull() ?: 1
+
+        val patchLines  = mutableListOf<String>()
+        var newOldCount = 0
+        var newNewCount = 0
+
+        for ((i, line) in hunk.lines.withIndex()) {
+            if (i == 0) continue  // skip original @@ header; rebuild below
+            val selected = i in selectedIndices
+            when {
+                line.startsWith("+") && !line.startsWith("+++") -> {
+                    if (selected) { patchLines += line; newNewCount++ }
+                    // unselected + → omit
+                }
+                line.startsWith("-") && !line.startsWith("---") -> {
+                    if (selected) { patchLines += line; newOldCount++ }
+                    else          { patchLines += " ${line.drop(1)}"; newOldCount++; newNewCount++ }
+                }
+                else -> { patchLines += line; newOldCount++; newNewCount++ }
+            }
+        }
+
+        return buildString {
+            fileHeader.forEach { appendLine(it) }
+            appendLine("@@ -$oldStart,$newOldCount +$newStart,$newNewCount @@")
+            patchLines.forEach { appendLine(it) }
         }
     }
 
