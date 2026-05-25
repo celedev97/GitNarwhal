@@ -57,6 +57,13 @@ class Git(val repo: String) {
         "--no-pager", "log", "--all", "--date=unix",
         "--pretty=format:%x1E%H%x1F%P%x1F%h%x1F%aN <%aE>%x1F%ad%x1F%cN <%cE>%x1F%cd%x1F%s%x1F%D"
     )
+    /** Files changed in a commit: output is "STATUS\tpath" lines (M/A/D/R/C…). */
+    fun commitFiles(hash: String) = git("diff-tree", "--no-commit-id", "-r", "--name-status", hash)
+    /** Diff of a single file as it appears in a commit. */
+    fun showFileDiff(hash: String, path: String) = git("--no-pager", "show", "--format=", hash, "--", path)
+    /** Reverse-apply a patch (undo a commit's change to a file in working copy). */
+    fun applyPatchReverse(patch: String) = applyPatch(patch, cached = false, reverse = true)
+
     fun diff(path: String? = null) = if (path != null) git("--no-pager", "diff", "--", path) else git("--no-pager", "diff")
     fun diffStaged(path: String? = null) = if (path != null) git("--no-pager", "diff", "--cached", "--", path) else git("--no-pager", "diff", "--cached")
     fun remoteUrl(remote: String = "origin") = git("config", "--get", "remote.$remote.url")
