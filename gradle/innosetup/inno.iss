@@ -43,6 +43,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameter
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "-jar ""{app}\{#MyAppJar}"""; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Parameters: "-jar ""{app}\{#MyAppJar}"""; WorkingDir: "{app}"; Flags: nowait onlyifsilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
