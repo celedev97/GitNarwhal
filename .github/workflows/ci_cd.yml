@@ -2,9 +2,7 @@ name: CI / CD
 
 on:
   push:
-    branches: [ master ]
-    tags:     [ 'v*' ]
-  pull_request:
+    tags: [ 'v*' ]
 
 permissions:
   contents: write
