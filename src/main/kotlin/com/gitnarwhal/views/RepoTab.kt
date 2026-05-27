@@ -19,6 +19,7 @@ import java.awt.Color
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.FlowLayout
+import java.awt.Rectangle
 import java.awt.Font
 import java.awt.Graphics
 import java.awt.Graphics2D
@@ -517,7 +518,13 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         commitHash: String? = null
     ): JPanel {
         val bgColor   = UIManager.getColor("EditorPane.background") ?: Color(0x2B, 0x2B, 0x2B)
-        val container = JPanel().apply {
+        val container = object : JPanel(), Scrollable {
+            override fun getPreferredScrollableViewportSize() = preferredSize
+            override fun getScrollableUnitIncrement(r: Rectangle, o: Int, d: Int) = 16
+            override fun getScrollableBlockIncrement(r: Rectangle, o: Int, d: Int) = r.height
+            override fun getScrollableTracksViewportWidth()  = true
+            override fun getScrollableTracksViewportHeight() = false
+        }.apply {
             layout     = BoxLayout(this, BoxLayout.Y_AXIS)
             background = bgColor
         }
