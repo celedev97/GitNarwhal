@@ -19,16 +19,10 @@ class CommitDialog(
     private val onSuccess: () -> Unit
 ) : JDialog(owner, "Commit", ModalityType.APPLICATION_MODAL) {
 
-    private data class FileEntry(val path: String, val stagedCode: Char, val unstagedCode: Char) {
-        val staged: Boolean   get() = stagedCode != ' ' && stagedCode != '?'
-        val unstaged: Boolean get() = unstagedCode != ' '
-        override fun toString() = "[$stagedCode$unstagedCode] $path"
-    }
-
-    private val stagedModel   = DefaultListModel<FileEntry>()
-    private val unstagedModel = DefaultListModel<FileEntry>()
-    private val stagedList   = JList(stagedModel)
-    private val unstagedList = JList(unstagedModel)
+    private val stagedModel   = DefaultListModel<String>()
+    private val unstagedModel = DefaultListModel<String>()
+    private val stagedList   = JList(stagedModel).apply { cellRenderer = FileStatusCellRenderer() }
+    private val unstagedList = JList(unstagedModel).apply { cellRenderer = FileStatusCellRenderer() }
     private val messageArea = JTextArea(6, 60).apply { lineWrap = true; wrapStyleWord = true }
     private val commitBtn = JButton("Commit")
     private val amendCheck = JCheckBox("Amend previous commit")
@@ -52,17 +46,17 @@ class CommitDialog(
         panel.border = BorderFactory.createEmptyBorder(8, 8, 0, 8)
 
         panel.add(filePane("Staged", stagedList, "Unstage selected") {
-            stagedList.selectedValuesList.forEach { git.unstage(it.path) }
+            stagedList.selectedValuesList.forEach { git.unstage(it.substring(2)) }
             refresh()
         })
         panel.add(filePane("Unstaged / Untracked", unstagedList, "Stage selected") {
-            unstagedList.selectedValuesList.forEach { git.add(it.path) }
+            unstagedList.selectedValuesList.forEach { git.add(it.substring(2)) }
             refresh()
         })
         return panel
     }
 
-    private fun filePane(title: String, list: JList<FileEntry>, btnText: String, action: () -> Unit): JPanel {
+    private fun filePane(title: String, list: JList<String>, btnText: String, action: () -> Unit): JPanel {
         val p = JPanel(BorderLayout(4, 4))
         p.border = BorderFactory.createTitledBorder(title)
         list.selectionMode = ListSelectionModel.MULTIPLE_INTERVAL_SELECTION
@@ -70,10 +64,10 @@ class CommitDialog(
         val btn = JButton(btnText).apply { addActionListener { action() } }
         val stageAllBtn = JButton(if (title.startsWith("Staged")) "Unstage all" else "Stage all").apply {
             addActionListener {
-                val model = list.model as DefaultListModel<FileEntry>
+                val model = list.model as DefaultListModel<String>
                 (0 until model.size).forEach { i ->
-                    val e = model.get(i)
-                    if (title.startsWith("Staged")) git.unstage(e.path) else git.add(e.path)
+                    val path = model.get(i).substring(2)
+                    if (title.startsWith("Staged")) git.unstage(path) else git.add(path)
                 }
                 refresh()
             }
@@ -114,9 +108,10 @@ class CommitDialog(
             if (raw.length < 3) continue
             val xy = raw.substring(0, 2)
             val path = raw.substring(3).substringBefore(" -> ").trim()
-            val entry = FileEntry(path, xy[0], xy[1])
-            if (entry.staged)   stagedModel.addElement(entry)
-            if (entry.unstaged) unstagedModel.addElement(entry)
+            val stagedCode   = xy[0]
+            val unstagedCode = xy[1]
+            if (stagedCode != ' ' && stagedCode != '?') stagedModel.addElement("$stagedCode $path")
+            if (unstagedCode != ' ')                    unstagedModel.addElement("$unstagedCode $path")
         }
         commitBtn.isEnabled = stagedModel.size() > 0 || amendCheck.isSelected
     }
