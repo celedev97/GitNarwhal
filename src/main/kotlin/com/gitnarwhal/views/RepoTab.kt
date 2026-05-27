@@ -238,7 +238,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         toolbar.add(commitFileLabel, BorderLayout.WEST)
         panel.add(toolbar, BorderLayout.NORTH)
 
-        commitFileList.cellRenderer = CommitFileCellRenderer()
+        commitFileList.cellRenderer = FileStatusCellRenderer()
         commitFileList.addListSelectionListener { e ->
             if (!e.valueIsAdjusting) {
                 val line   = commitFileList.selectedValue ?: return@addListSelectionListener
@@ -258,7 +258,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             override fun doInBackground(): List<String> {
                 val r = git.commitFiles(commit.hash)
                 if (!r.success) return emptyList()
-                return r.output.lines().filter { it.isNotBlank() }
+                return r.output.lines().filter { it.isNotBlank() }.map { line ->
+                    val tab = line.indexOf('\t')
+                    if (tab < 0) line
+                    else "${line[0]} ${line.substringAfterLast('\t').trim()}"
+                }
             }
             override fun done() {
                 val files = try { get() } catch (_: Exception) { return }
@@ -270,7 +274,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     private fun showCommitFileDiff(commit: Commit, fileLine: String) {
-        val path = fileLine.substringAfter("\t").trim()
+        val path = fileLine.substring(2).trim()
         object : SwingWorker<String, Void>() {
             override fun doInBackground() = git.showFileDiff(commit.hash, path).output
             override fun done() {
@@ -282,31 +286,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }.execute()
     }
 
-    private inner class CommitFileCellRenderer : DefaultListCellRenderer() {
-        override fun getListCellRendererComponent(
-            list: JList<*>, value: Any?, index: Int,
-            isSelected: Boolean, cellHasFocus: Boolean
-        ): java.awt.Component {
-            val label = super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus) as JLabel
-            val line  = value?.toString() ?: ""
-            val tab   = line.indexOf('\t')
-            if (tab < 0) return label
-            val status = line.substring(0, tab).trim()
-            val path   = line.substring(tab + 1).trim()
-            val (letter, color) = when {
-                status.startsWith("A") -> "A" to Color(0x81, 0xC7, 0x84)
-                status.startsWith("D") -> "D" to Color(0xE5, 0x73, 0x73)
-                status.startsWith("R") -> "R" to Color(0x4F, 0xC3, 0xF7)
-                status.startsWith("C") -> "C" to Color(0xFF, 0xB7, 0x4D)
-                else                   -> "M" to Color(0xFF, 0xB7, 0x4D)
-            }
-            label.text = "<html><font color='${colorHex(color)}'><b>$letter</b></font>&nbsp;&nbsp;$path</html>"
-            return label
-        }
-        private fun colorHex(c: Color) = "#%02X%02X%02X".format(c.red, c.green, c.blue)
-    }
-
     private fun buildFileStatusPanel(): JComponent {
+        stagedList.cellRenderer   = FileStatusCellRenderer()
+        unstagedList.cellRenderer = FileStatusCellRenderer()
+
         // ── File selection → show diff ────────────────────────────────────────
         stagedList.addListSelectionListener { e ->
             if (!e.valueIsAdjusting && stagedList.selectedValue != null) {
