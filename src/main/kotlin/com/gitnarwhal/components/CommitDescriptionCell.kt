@@ -60,7 +60,8 @@ class CommitDescriptionCell : DefaultTableCellRenderer() {
             }
 
             // ── Commit title ──────────────────────────────────────────────────
-            g2.font  = font
+            val isHead = c.refs.any { it.type == RefType.HEAD }
+            g2.font  = if (isHead) font.deriveFont(Font.BOLD) else font
             val fm   = g2.fontMetrics
             g2.color = if (isRowSelected) UIManager.getColor("Table.selectionForeground") ?: Color.WHITE
                        else foreground

@@ -38,6 +38,7 @@ class Git(val repo: String) {
 
     //region read
     fun currentBranch() = git("branch", "--show-current")
+    fun revParse(ref: String) = git("rev-parse", ref)
     fun status()   = git("status", "--porcelain=v1", "-b")
     fun statusReadable() = git("status")
     fun fetch()    = git("fetch", "--all", "--prune")

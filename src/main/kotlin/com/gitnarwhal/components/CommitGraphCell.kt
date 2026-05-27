@@ -1,6 +1,7 @@
 package com.gitnarwhal.components
 
 import com.gitnarwhal.backend.Commit
+import com.gitnarwhal.backend.RefType
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Component
@@ -58,11 +59,21 @@ class CommitGraphCell : DefaultTableCellRenderer() {
             }
 
             // Commit dot — draw on top of lines
-            g2.color = c.color
-            g2.fillOval(dotX - DOT_R, mid - DOT_R, DOT_R * 2, DOT_R * 2)
-            g2.color = c.color.darker()
-            g2.stroke = BasicStroke(1f)
-            g2.drawOval(dotX - DOT_R, mid - DOT_R, DOT_R * 2, DOT_R * 2)
+            val isHead = c.refs.any { it.type == RefType.HEAD }
+            if (isHead) {
+                // Hollow ring: fill with background first to erase lines inside, then draw ring
+                g2.color  = background
+                g2.fillOval(dotX - DOT_R, mid - DOT_R, DOT_R * 2, DOT_R * 2)
+                g2.color  = c.color
+                g2.stroke = BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+                g2.drawOval(dotX - DOT_R, mid - DOT_R, DOT_R * 2, DOT_R * 2)
+            } else {
+                g2.color  = c.color
+                g2.fillOval(dotX - DOT_R, mid - DOT_R, DOT_R * 2, DOT_R * 2)
+                g2.color  = c.color.darker()
+                g2.stroke = BasicStroke(1f)
+                g2.drawOval(dotX - DOT_R, mid - DOT_R, DOT_R * 2, DOT_R * 2)
+            }
         } finally {
             g2.dispose()
         }

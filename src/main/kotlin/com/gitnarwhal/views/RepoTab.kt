@@ -147,6 +147,13 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             cellRenderer     = BranchCellRenderer()
             selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
             addMouseListener(buildBranchMouseAdapter())
+            addTreeSelectionListener { e ->
+                if (e.isAddedPath) {
+                    val bi = (e.path.lastPathComponent as? DefaultMutableTreeNode)
+                        ?.userObject as? BranchInfo ?: return@addTreeSelectionListener
+                    scrollCommitTableToBranch(bi.fullName)
+                }
+            }
         }
 
         // History view: commit table above, detail panel below
@@ -461,6 +468,21 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         mainCards.show(mainContainer, CARD_FILE_STATUS)
         refreshAuthorLabel()
         refreshFileStatus()
+    }
+
+    private fun scrollCommitTableToBranch(branchFullName: String) {
+        object : SwingWorker<String, Void>() {
+            override fun doInBackground() = git.revParse(branchFullName).output.trim()
+            override fun done() {
+                val hash = try { get() } catch (_: Exception) { return }
+                if (hash.isBlank()) return
+                val row = commitList.indexOfFirst { it.hash.startsWith(hash) || hash.startsWith(it.hash) }
+                if (row < 0) return
+                mainCards.show(mainContainer, CARD_HISTORY)
+                commitTable.selectionModel.setSelectionInterval(row, row)
+                commitTable.scrollRectToVisible(commitTable.getCellRect(row, 0, true))
+            }
+        }.execute()
     }
 
     private fun refreshAuthorLabel() {
