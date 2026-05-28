@@ -1,7 +1,7 @@
 package com.gitnarwhal.components.AddCloneTab
 
 import com.gitnarwhal.backend.Git
-import com.gitnarwhal.components.ProgressDialog
+import com.gitnarwhal.components.ProgressOverlay
 import com.gitnarwhal.utils.NativeFileChooser
 import com.gitnarwhal.utils.toPath
 import com.gitnarwhal.views.AddCloneTab
@@ -99,7 +99,8 @@ class CloneTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
         if (File(destPath).exists()) { err("Destination already exists: $destPath"); return }
 
         cloneBtn.isEnabled = false
-        val dialog = ProgressDialog(SwingUtilities.getWindowAncestor(this), "Cloning $url")
+        val overlay = ProgressOverlay()
+        val rp      = SwingUtilities.getRootPane(this)
         object : SwingWorker<Pair<Boolean, String>, Void>() {
             override fun doInBackground(): Pair<Boolean, String> {
                 val cmd = Git.Static.clone(url, destPath)
@@ -109,14 +110,14 @@ class CloneTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
                 cloneBtn.isEnabled = true
                 val (success, output) = try { get() }
                     catch (e: Exception) { false to (e.message ?: "unknown error") }
-                dialog.finish(output, success)
+                overlay.finish(output, success)
                 if (success) with(addCloneTab.mainView) {
                     val repo = RepoTab(destPath, name)
                     addTab(repo); selectTab(repo); closeTab(addCloneTab)
                 }
             }
         }.execute()
-        dialog.isVisible = true
+        overlay.show(rp, "Cloning $url")
     }
 
     private fun err(msg: String) =
