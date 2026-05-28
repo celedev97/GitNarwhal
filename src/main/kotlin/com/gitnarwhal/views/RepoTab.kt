@@ -455,6 +455,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 for (line in out.lines()) {
                     if (line.length < 3 || line.startsWith("##")) continue
                     val x  = line[0]; val y = line[1]; val file = line.substring(3)
+                    if (matchesIgnorePattern(file)) continue
                     if (x != ' ' && x != '?') stagedModel.addElement("$x $file")
                     if (y == 'M' || y == 'D' || y == '?') unstagedModel.addElement("$y $file")
                 }
@@ -642,7 +643,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val addBg   = Color(0x1B, 0x3A, 0x27)
         val remBg   = Color(0x3A, 0x1B, 0x1B)
         val hunkFg  = Color(0x4F, 0xC3, 0xF7)
-        val monoFont = Font(Font.MONOSPACED, Font.PLAIN, 12)
+        val monoFont = Font(com.gitnarwhal.utils.Settings.diffFontFamily, Font.PLAIN, com.gitnarwhal.utils.Settings.diffFontSize)
 
         val model = DefaultListModel<String>().apply { lines.forEach { addElement(it) } }
 
@@ -1495,6 +1496,17 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             mainCards.show(mainContainer, CARD_HISTORY)
             commitTable.selectionModel.setSelectionInterval(idx, idx)
             commitTable.scrollRectToVisible(commitTable.getCellRect(idx, 0, true))
+        }
+    }
+
+    private fun matchesIgnorePattern(filename: String): Boolean {
+        val patterns = com.gitnarwhal.utils.Settings.diffIgnorePatterns
+            .split(",", ";").map { it.trim() }.filter { it.isNotBlank() }
+        if (patterns.isEmpty()) return false
+        val leaf = java.nio.file.Path.of(filename.substringAfterLast("/"))
+        return patterns.any { pat ->
+            try { java.nio.file.FileSystems.getDefault().getPathMatcher("glob:$pat").matches(leaf) }
+            catch (_: Exception) { false }
         }
     }
 

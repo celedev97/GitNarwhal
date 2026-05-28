@@ -25,6 +25,24 @@ object Settings : JSONObject(settingsJSON) {
     var openTabs             by JSONSetting(JSONArray())
     var recentRepos          by JSONSetting(JSONArray())
 
+    // General
+    var reopenTabs          by JSONSetting(true)
+    var defaultCloneFolder  by JSONSetting("")
+
+    // Diff
+    var diffFontFamily      by JSONSetting("Monospaced")
+    var diffFontSize        by JSONSetting(12)
+    var diffIgnoreWhitespace by JSONSetting(false)
+    var diffIgnorePatterns  by JSONSetting("")
+
+    // Git
+    var enableForcePush     by JSONSetting(true)
+    var safeForcePush       by JSONSetting(true)
+    var gitPath             by JSONSetting("")
+
+    // Custom Actions
+    var customActions       by JSONSetting(JSONArray())
+
 }
 
 fun Settings.save() {

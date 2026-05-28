@@ -3,6 +3,7 @@ package com.gitnarwhal.backend
 import com.gitnarwhal.utils.Command
 import com.gitnarwhal.utils.GitDownloader
 import com.gitnarwhal.utils.OS
+import com.gitnarwhal.utils.Settings
 
 class Git(val repo: String) {
     companion object {
@@ -10,19 +11,29 @@ class Git(val repo: String) {
 
         private val WHERE = Command.find("git")
 
-        val GIT: String = when {
-            //if where/which gives a result then git is in PATH
-            WHERE != null -> WHERE.toString()
-
-            //if the internal git exists, use that
-            java.io.File(INTERNAL_GIT + OS.EXE).exists() -> INTERNAL_GIT + OS.EXE
-
-            //otherwise download it
-            else -> when (OS.CURRENT) {
-                OS.WINDOWS -> { GitDownloader.downloadWindowsGit(); INTERNAL_GIT + OS.EXE }
-                OS.LINUX   -> GitDownloader.downloadLinuxGit()
-                OS.MAC     -> GitDownloader.downloadMacGit()
+        val GIT: String = run {
+            // User-defined path takes priority (requires restart to take effect)
+            val custom = Settings.gitPath.trim()
+            if (custom.isNotBlank() && java.io.File(custom).exists()) return@run custom
+            when {
+                WHERE != null -> WHERE.toString()
+                java.io.File(INTERNAL_GIT + OS.EXE).exists() -> INTERNAL_GIT + OS.EXE
+                else -> when (OS.CURRENT) {
+                    OS.WINDOWS -> { GitDownloader.downloadWindowsGit(); INTERNAL_GIT + OS.EXE }
+                    OS.LINUX   -> GitDownloader.downloadLinuxGit()
+                    OS.MAC     -> GitDownloader.downloadMacGit()
+                }
             }
+        }
+
+        /** Read/write git global config without a repo context. */
+        fun globalGet(key: String) =
+            Command(GIT, "config", "--global", "--get", key).execute().output.trim()
+        fun globalSet(key: String, value: String) {
+            Command(GIT, "config", "--global", key, value).execute()
+        }
+        fun globalUnset(key: String) {
+            Command(GIT, "config", "--global", "--unset", key).execute()
         }
     }
 
@@ -86,8 +97,19 @@ class Git(val repo: String) {
     /** Reverse-apply a patch (undo a commit's change to a file in working copy). */
     fun applyPatchReverse(patch: String) = applyPatch(patch, cached = false, reverse = true)
 
-    fun diff(path: String? = null) = if (path != null) git("--no-pager", "diff", "--", path) else git("--no-pager", "diff")
-    fun diffStaged(path: String? = null) = if (path != null) git("--no-pager", "diff", "--cached", "--", path) else git("--no-pager", "diff", "--cached")
+    fun diff(path: String? = null): Command {
+        val args = mutableListOf("--no-pager", "diff")
+        if (Settings.diffIgnoreWhitespace) args += "-w"
+        if (path != null) { args += "--"; args += path }
+        return git(*args.toTypedArray())
+    }
+
+    fun diffStaged(path: String? = null): Command {
+        val args = mutableListOf("--no-pager", "diff", "--cached")
+        if (Settings.diffIgnoreWhitespace) args += "-w"
+        if (path != null) { args += "--"; args += path }
+        return git(*args.toTypedArray())
+    }
     fun remoteUrl(remote: String = "origin") = git("config", "--get", "remote.$remote.url")
     fun remoteList()                         = git("remote")
     fun remoteAdd(name: String, url: String) = git("remote", "add", name, url)
