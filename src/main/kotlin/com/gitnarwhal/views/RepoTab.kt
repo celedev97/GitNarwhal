@@ -8,6 +8,8 @@ import com.gitnarwhal.components.CommitDataPanel
 import com.gitnarwhal.components.CommitDescriptionCell
 import com.gitnarwhal.components.CommitGraphCell
 import com.gitnarwhal.components.ProgressOverlay
+import com.gitnarwhal.components.PullOverlay
+import com.gitnarwhal.components.PushOverlay
 import com.gitnarwhal.utils.Command
 import com.gitnarwhal.utils.OS
 import org.kordamp.ikonli.Ikon
@@ -1457,9 +1459,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         CommitDialog(SwingUtilities.getWindowAncestor(this), git, onSuccess = { refresh() }).isVisible = true
     }
 
-    fun fetch() = runWithProgress("Fetching…")  { git.fetch() }
-    fun pull()  = runWithProgress("Pulling…")   { git.pull() }
-    fun push()  = runWithProgress("Pushing…")   { git.push() }
+    fun fetch() = runWithProgress("Fetching…") { git.fetch() }
+    fun pull()  = PullOverlay(git).show(SwingUtilities.getRootPane(this)) { refresh() }
+    fun push()  = PushOverlay(git, tabTitle).show(SwingUtilities.getRootPane(this)) { refresh() }
 
     private fun runWithProgress(title: String, op: () -> Command) {
         val overlay = ProgressOverlay()
@@ -1478,6 +1480,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     // ── Misc helpers ──────────────────────────────────────────────────────────
+
+    fun showHistoryView()    = mainCards.show(mainContainer, CARD_HISTORY)
+    fun showFileStatusView() = showFileStatus()
+    fun openSettings()       { RepoSettingsDialog(git, SwingUtilities.getWindowAncestor(this)).isVisible = true }
 
     fun openTerminal() = Thread { OS.TERMINAL.execute(path) }.start()
     fun openExplorer() = Thread { (OS.EXPLORER + path).execute() }.start()
