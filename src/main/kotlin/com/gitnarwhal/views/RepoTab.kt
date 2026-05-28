@@ -7,7 +7,7 @@ import com.gitnarwhal.backend.RefType
 import com.gitnarwhal.components.CommitDataPanel
 import com.gitnarwhal.components.CommitDescriptionCell
 import com.gitnarwhal.components.CommitGraphCell
-import com.gitnarwhal.components.ProgressDialog
+import com.gitnarwhal.components.ProgressOverlay
 import com.gitnarwhal.utils.Command
 import com.gitnarwhal.utils.OS
 import org.kordamp.ikonli.Ikon
@@ -1465,19 +1465,19 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     fun push()  = runWithProgress("Pushing…")   { git.push() }
 
     private fun runWithProgress(title: String, op: () -> Command) {
-        val owner  = SwingUtilities.getWindowAncestor(this)
-        val dialog = ProgressDialog(owner, title)
+        val overlay = ProgressOverlay()
+        val rp      = SwingUtilities.getRootPane(this)
         object : SwingWorker<Command, Void>() {
             override fun doInBackground() = op()
             override fun done() {
                 val cmd = try { get() } catch (e: Exception) {
-                    dialog.finish("Error: ${e.message}", false); return
+                    overlay.finish("Error: ${e.message}", false); return
                 }
-                dialog.finish(cmd.output, cmd.success)
+                overlay.finish(cmd.output, cmd.success)
                 refresh()
             }
         }.execute()
-        dialog.isVisible = true
+        overlay.show(rp, title)
     }
 
     // ── Misc helpers ──────────────────────────────────────────────────────────
