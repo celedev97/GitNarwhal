@@ -1,6 +1,7 @@
 package com.gitnarwhal
 
 import com.gitnarwhal.backend.Git
+import com.gitnarwhal.utils.Command
 import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.utils.ThemeService
 import com.gitnarwhal.utils.UpdateService
@@ -105,6 +106,8 @@ private fun buildMenuBar(frame: JFrame, mainView: MainView): JMenuBar {
         addSeparator()
         add(item("Open in Terminal",  KeyEvent.VK_T, shift or alt) { currentRepo()?.openTerminal() })
         add(item("Show in Explorer")                                { currentRepo()?.openExplorer() })
+        addSeparator()
+        add(buildToolsMenu(mainView))
     }
 
     // ── Edit ──────────────────────────────────────────────────────────────────
@@ -128,5 +131,37 @@ private fun buildMenuBar(frame: JFrame, mainView: MainView): JMenuBar {
 
     return JMenuBar().apply {
         add(fileMenu); add(viewMenu); add(repoMenu); add(editMenu); add(helpMenu)
+    }
+}
+
+private fun buildToolsMenu(mainView: MainView): JMenu {
+    fun currentRepo() = mainView.tabPane.selectedComponent as? com.gitnarwhal.views.RepoTab
+    return JMenu("Tools").apply {
+        addMenuListener(object : javax.swing.event.MenuListener {
+            override fun menuSelected(e: javax.swing.event.MenuEvent) {
+                removeAll()
+                val arr = Settings.customActions
+                if (arr.length() == 0) {
+                    add(JMenuItem("(No custom actions defined)").apply { isEnabled = false })
+                } else {
+                    for (i in 0 until arr.length()) {
+                        val obj  = arr.getJSONObject(i)
+                        val name = obj.optString("name", "Action $i")
+                        val cmd  = obj.optString("command", "")
+                        val prms = obj.optString("params", "")
+                        add(JMenuItem(name).apply {
+                            addActionListener {
+                                val repo = currentRepo() ?: return@addActionListener
+                                val resolved = prms.replace("\$REPO", repo.path)
+                                val parts = (listOf(cmd) + resolved.split(" ").filter { it.isNotBlank() })
+                                Thread { Command(*parts.toTypedArray()).execute() }.start()
+                            }
+                        })
+                    }
+                }
+            }
+            override fun menuDeselected(e: javax.swing.event.MenuEvent) {}
+            override fun menuCanceled(e: javax.swing.event.MenuEvent)   {}
+        })
     }
 }

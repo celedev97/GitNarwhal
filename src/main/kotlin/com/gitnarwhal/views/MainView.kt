@@ -33,7 +33,7 @@ class MainView : JPanel(BorderLayout()) {
         //region restore last-open tabs
         try {
             val toRemove = arrayListOf<JSONObject>()
-            for (tab in Settings.openTabs.map { it as JSONObject }) {
+            for (tab in if (Settings.reopenTabs) Settings.openTabs.map { it as JSONObject } else emptyList()) {
                 val path = tab.getString("path").toPath()
                 val name = tab.getString("name")
                 if (Files.isDirectory(path)) {

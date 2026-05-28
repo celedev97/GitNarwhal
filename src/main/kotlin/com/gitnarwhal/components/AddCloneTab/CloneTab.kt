@@ -3,6 +3,7 @@ package com.gitnarwhal.components.AddCloneTab
 import com.gitnarwhal.backend.Git
 import com.gitnarwhal.components.ProgressOverlay
 import com.gitnarwhal.utils.NativeFileChooser
+import com.gitnarwhal.utils.Settings
 import com.gitnarwhal.utils.toPath
 import com.gitnarwhal.views.AddCloneTab
 import com.gitnarwhal.views.RepoTab
@@ -43,6 +44,7 @@ class CloneTab(private val addCloneTab: AddCloneTab) : JPanel(BorderLayout()) {
         form.add(Box.createVerticalStrut(10))
 
         // Destination + Browse
+        if (Settings.defaultCloneFolder.isNotBlank()) destField.text = Settings.defaultCloneFolder
         destField.putClientProperty("JTextField.placeholderText", "Destination Path:")
         val browseBtn = JButton("Browse")
         browseBtn.addActionListener {
