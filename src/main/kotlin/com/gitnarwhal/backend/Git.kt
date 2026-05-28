@@ -207,9 +207,16 @@ class Git(val repo: String) {
     }
 
     fun merge(branch: String)  = git("merge", branch)
+    fun mergeAbort()           = git("merge", "--abort")
     fun rebase(onto: String)   = git("rebase", onto)
     fun rebaseAbort()          = git("rebase", "--abort")
     fun rebaseContinue()       = git("rebase", "--continue")
+    fun blame(path: String, rev: String? = null): Command {
+        val args = mutableListOf("--no-pager", "blame", "--date=short")
+        if (!rev.isNullOrBlank()) args += rev
+        args += "--"; args += path
+        return git(*args.toTypedArray())
+    }
     fun cherryPick(hash: String) = git("cherry-pick", hash)
     fun revert(hash: String)   = git("revert", "--no-edit", hash)
     fun reset(target: String, mode: String = "mixed") = git("reset", "--$mode", target)
