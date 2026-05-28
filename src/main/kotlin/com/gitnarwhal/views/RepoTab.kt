@@ -645,6 +645,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val model = DefaultListModel<String>().apply { lines.forEach { addElement(it) } }
 
         val list = object : JList<String>(model) {
+            override fun getMaximumSize(): Dimension = Dimension(Int.MAX_VALUE, preferredSize.height)
+
             private var wasSelected = false
             private var clickedRow  = -1
 
