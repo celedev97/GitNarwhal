@@ -7,6 +7,7 @@ import com.gitnarwhal.utils.UpdateService
 import com.gitnarwhal.views.MainView
 import com.gitnarwhal.views.SettingsDialog
 import java.awt.Dimension
+import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import javax.swing.ImageIcon
 import javax.swing.JFrame
@@ -47,45 +48,85 @@ private fun startApp() {
 }
 
 private fun buildMenuBar(frame: JFrame, mainView: MainView): JMenuBar {
-    val bar = JMenuBar()
+    val cmd   = java.awt.Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx
+    val shift = InputEvent.SHIFT_DOWN_MASK
+    val alt   = InputEvent.ALT_DOWN_MASK
 
-    val fileMenu = JMenu("File")
-    val newTab = JMenuItem("New Tab").apply {
-        accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_T, java.awt.Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-        addActionListener { mainView.addNewCloneTab() }
-    }
-    val openRepo = JMenuItem("Open Repository…").apply {
-        accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_O, java.awt.Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-        addActionListener { mainView.openRepositoryFromPicker() }
-    }
-    val quit = JMenuItem("Quit").apply {
-        accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_Q, java.awt.Toolkit.getDefaultToolkit().menuShortcutKeyMaskEx)
-        addActionListener { frame.dispatchEvent(java.awt.event.WindowEvent(frame, java.awt.event.WindowEvent.WINDOW_CLOSING)) }
-    }
-    fileMenu.add(newTab); fileMenu.add(openRepo); fileMenu.addSeparator(); fileMenu.add(quit)
+    fun item(label: String, key: Int = 0, mods: Int = 0, action: () -> Unit) =
+        JMenuItem(label).apply {
+            if (key != 0) accelerator = KeyStroke.getKeyStroke(key, mods)
+            addActionListener { action() }
+        }
 
-    val editMenu = JMenu("Edit")
-    val settings = JMenuItem("Settings…").apply {
-        addActionListener { SettingsDialog(frame).isVisible = true }
-    }
-    editMenu.add(settings)
+    fun currentRepo() = mainView.tabPane.selectedComponent as? com.gitnarwhal.views.RepoTab
 
-    val helpMenu = JMenu("Help")
-    val checkUpdates = JMenuItem("Check for Updates…").apply {
-        addActionListener { UpdateService.checkForUpdatesManual(frame) }
+    // ── File ──────────────────────────────────────────────────────────────────
+    val fileMenu = JMenu("File").apply {
+        add(item("Clone / New…",        KeyEvent.VK_N, cmd)  { mainView.addNewCloneTab() })
+        add(item("Open Repository…",    KeyEvent.VK_O, cmd)  { mainView.openRepositoryFromPicker() })
+        addSeparator()
+        add(item("Exit",                KeyEvent.VK_F4, alt) {
+            frame.dispatchEvent(java.awt.event.WindowEvent(frame, java.awt.event.WindowEvent.WINDOW_CLOSING))
+        })
     }
-    val about = JMenuItem("About GitNarwhal…").apply {
-        addActionListener {
+
+    // ── View ──────────────────────────────────────────────────────────────────
+    val viewMenu = JMenu("View").apply {
+        add(item("Refresh",             KeyEvent.VK_F5, 0)         { currentRepo()?.refresh() })
+        addSeparator()
+        add(JMenuItem("Next Tab").apply {
+            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_TAB, cmd)
+            addActionListener {
+                val tp = mainView.tabPane
+                if (tp.tabCount > 1) tp.selectedIndex = (tp.selectedIndex + 1) % tp.tabCount
+            }
+        })
+        add(JMenuItem("Previous Tab").apply {
+            accelerator = KeyStroke.getKeyStroke(KeyEvent.VK_TAB, cmd or shift)
+            addActionListener {
+                val tp = mainView.tabPane
+                if (tp.tabCount > 1) tp.selectedIndex = (tp.selectedIndex - 1 + tp.tabCount) % tp.tabCount
+            }
+        })
+        addSeparator()
+        add(item("File Status View",    KeyEvent.VK_1, cmd) { currentRepo()?.showFileStatusView() })
+        add(item("History View",        KeyEvent.VK_2, cmd) { currentRepo()?.showHistoryView()    })
+    }
+
+    // ── Repository ────────────────────────────────────────────────────────────
+    val repoMenu = JMenu("Repository").apply {
+        add(item("Repository Settings…", KeyEvent.VK_COMMA, cmd or shift) { currentRepo()?.openSettings()  })
+        add(item("View Repository Online")                                 { currentRepo()?.openRemote()    })
+        add(item("Refresh Remote Status", KeyEvent.VK_R, shift or alt)    { currentRepo()?.fetch()         })
+        addSeparator()
+        add(item("Push…",    KeyEvent.VK_P, cmd or shift) { currentRepo()?.push()  })
+        add(item("Pull…",    KeyEvent.VK_L, cmd or shift) { currentRepo()?.pull()  })
+        add(item("Fetch…",   KeyEvent.VK_F, cmd or shift) { currentRepo()?.fetch() })
+        addSeparator()
+        add(item("Open in Terminal",  KeyEvent.VK_T, shift or alt) { currentRepo()?.openTerminal() })
+        add(item("Show in Explorer")                                { currentRepo()?.openExplorer() })
+    }
+
+    // ── Edit ──────────────────────────────────────────────────────────────────
+    val editMenu = JMenu("Edit").apply {
+        add(item("Settings…") { SettingsDialog(frame).isVisible = true })
+    }
+
+    // ── Help ──────────────────────────────────────────────────────────────────
+    val helpMenu = JMenu("Help").apply {
+        add(item("Check for Updates…") { UpdateService.checkForUpdatesManual(frame) })
+        addSeparator()
+        add(item("About GitNarwhal…") {
             javax.swing.JOptionPane.showMessageDialog(
                 frame,
                 "GitNarwhal\nVersion: ${UpdateService.currentVersion}\n\nhttps://github.com/celedev97/GitNarwhal",
                 "About GitNarwhal",
                 javax.swing.JOptionPane.INFORMATION_MESSAGE
             )
-        }
+        })
     }
-    helpMenu.add(checkUpdates); helpMenu.addSeparator(); helpMenu.add(about)
 
-    bar.add(fileMenu); bar.add(editMenu); bar.add(helpMenu)
-    return bar
+    return JMenuBar().apply {
+        add(fileMenu); add(viewMenu); add(repoMenu); add(editMenu); add(helpMenu)
+    }
 }

@@ -41,8 +41,29 @@ class Git(val repo: String) {
     fun revParse(ref: String) = git("rev-parse", ref)
     fun status()   = git("status", "--porcelain=v1", "-b")
     fun statusReadable() = git("status")
-    fun fetch()    = git("fetch", "--all", "--prune")
+    fun fetch()              = git("fetch", "--all", "--prune")
+    fun fetchRemote(remote: String) = git("fetch", remote, "--prune")
     fun branches() = git("branch", "--all", "-vv")
+
+    fun localBranchNames(): List<String> {
+        val out = git("branch", "--format=%(refname:short)")
+        return if (out.success) out.output.lines().map { it.trim() }.filter { it.isNotBlank() } else emptyList()
+    }
+
+    fun remoteBranchNames(remote: String): List<String> {
+        val out = git("branch", "-r", "--format=%(refname:short)")
+        return if (out.success) out.output.lines()
+            .map { it.trim() }
+            .filter { it.startsWith("$remote/") && !it.contains("->") }
+            .map { it.removePrefix("$remote/") }
+            .filter { it.isNotBlank() }
+        else emptyList()
+    }
+
+    fun remoteNames(): List<String> {
+        val out = remoteList()
+        return if (out.success) out.output.lines().map { it.trim() }.filter { it.isNotBlank() } else emptyList()
+    }
     fun tags()     = git("tag", "--list")
     /**
      * Returns one record per commit.
@@ -134,9 +155,30 @@ class Git(val repo: String) {
         return git(*parts.toTypedArray())
     }
 
-    fun pull(remote: String = "origin", branch: String? = null, rebase: Boolean = false): Command {
+    fun pushRefspec(
+        remote: String, localBranch: String, remoteBranch: String,
+        force: Boolean = false, setUpstream: Boolean = false
+    ): Command {
+        val parts = mutableListOf("push")
+        if (setUpstream) parts += "--set-upstream"
+        if (force)       parts += "--force-with-lease"
+        parts += remote
+        parts += "$localBranch:$remoteBranch"
+        return git(*parts.toTypedArray())
+    }
+
+    fun pushTags(remote: String = "origin") = git("push", remote, "--tags")
+
+    fun pull(
+        remote: String = "origin", branch: String? = null,
+        rebase: Boolean = false, noCommit: Boolean = false,
+        noFf: Boolean = false, log: Boolean = false
+    ): Command {
         val parts = mutableListOf("pull")
-        if (rebase) parts += "--rebase"
+        if (rebase)   parts += "--rebase"
+        if (noCommit) parts += "--no-commit"
+        if (noFf)     parts += "--no-ff"
+        if (log)      parts += "--log"
         parts += remote
         if (branch != null) parts += branch
         return git(*parts.toTypedArray())
