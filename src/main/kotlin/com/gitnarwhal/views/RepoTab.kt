@@ -40,17 +40,18 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     val git: Git = Git(path)
 
     // ── Commit table ──────────────────────────────────────────────────────────
-    private val commitList: MutableList<Commit> = mutableListOf()
+    private val commitList:     MutableList<Commit> = mutableListOf()
+    private val filteredCommits: MutableList<Commit> = mutableListOf()
 
     private val commitTableModel = object : AbstractTableModel() {
         private val cols = arrayOf("Graph", "Description", "Date", "Committer", "Commit")
-        override fun getRowCount()                    = commitList.size
+        override fun getRowCount()                    = filteredCommits.size
         override fun getColumnCount()                 = cols.size
         override fun getColumnName(col: Int)          = cols[col]
         override fun getColumnClass(col: Int)         = if (col <= 1) Commit::class.java else String::class.java
         override fun isCellEditable(row: Int, col: Int) = false
         override fun getValueAt(row: Int, col: Int): Any {
-            val c = commitList[row]
+            val c = filteredCommits[row]
             return when (col) {
                 0 -> c; 1 -> c; 2 -> c.committerDate; 3 -> c.committer; 4 -> c.hash
                 else -> ""
@@ -130,6 +131,23 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private val pullBtn   = BadgeButton(MaterialDesign.MDI_ARROW_DOWN_BOLD, "Pull") { pull() }
     private val pushBtn   = BadgeButton(MaterialDesign.MDI_ARROW_UP_BOLD, "Push")  { push() }
 
+    // ── Commit search ─────────────────────────────────────────────────────────
+    private val searchField = JTextField().apply {
+        putClientProperty("JTextField.placeholderText", "Search commits…")
+    }
+
+    // ── Blame button (in diff top bar) ────────────────────────────────────────
+    private val blameBtn      = JButton("Blame").apply { isVisible = false }
+    private var currentDiffFile   = ""
+    private var currentDiffStaged = false
+    private var showingBlame      = false
+
+    // ── Conflict banner ───────────────────────────────────────────────────────
+    private val conflictBannerLabel = JLabel()
+    private val conflictContinueBtn = JButton("Continue")
+    private val conflictAbortBtn    = JButton("Abort")
+    private val conflictBanner      = JPanel()
+
     // ── Main content card layout (History / File Status) ──────────────────────
     private val mainCards     = CardLayout()
     private val mainContainer = JPanel(mainCards)
@@ -172,9 +190,18 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             commitDiffScroll
         ).apply { resizeWeight = 0.35 }
 
+        searchField.document.addDocumentListener(object : javax.swing.event.DocumentListener {
+            override fun insertUpdate(e: javax.swing.event.DocumentEvent) = filterCommits(searchField.text)
+            override fun removeUpdate(e: javax.swing.event.DocumentEvent) = filterCommits(searchField.text)
+            override fun changedUpdate(e: javax.swing.event.DocumentEvent) {}
+        })
+        val tableWithSearch = JPanel(BorderLayout()).apply {
+            add(searchField,            BorderLayout.NORTH)
+            add(JScrollPane(commitTable), BorderLayout.CENTER)
+        }
         val historyView = JSplitPane(
             JSplitPane.VERTICAL_SPLIT,
-            JScrollPane(commitTable),
+            tableWithSearch,
             commitDetailSplit
         ).apply { resizeWeight = 0.7; dividerLocation = 400 }
 
@@ -194,8 +221,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         commitTable.selectionModel.addListSelectionListener { e ->
             if (!e.valueIsAdjusting) {
                 val row = commitTable.selectedRow
-                if (row in commitList.indices) {
-                    val c = commitList[row]
+                if (row in filteredCommits.indices) {
+                    val c = filteredCommits[row]
                     if (c.hash == UNCOMMITTED_HASH) showFileStatus()
                     else {
                         currentCommit = c
@@ -370,8 +397,31 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         unstagedList.componentPopupMenu = JPopupMenu().apply {
             add(JMenuItem("Stage selected").apply {
                 addActionListener {
+                    unstagedList.selectedValuesList
+                        .filter { !it.startsWith("! ") }
+                        .forEach { git.add(it.substring(2)) }
+                    refreshFileStatus()
+                }
+            })
+            add(JMenuItem("Mark as resolved (git add)").apply {
+                addActionListener {
                     unstagedList.selectedValuesList.forEach { git.add(it.substring(2)) }
                     refreshFileStatus()
+                }
+            })
+            addSeparator()
+            add(JMenuItem("Ignore…").apply {
+                addActionListener {
+                    val v = unstagedList.selectedValue ?: return@addActionListener
+                    showIgnoreDialog(v.substring(2))
+                }
+            })
+            add(JMenuItem("Blame").apply {
+                addActionListener {
+                    val v = unstagedList.selectedValue ?: return@addActionListener
+                    val file = v.substring(2)
+                    blameBtn.isVisible = true
+                    showBlame(file, null)
                 }
             })
         }
@@ -389,14 +439,50 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             border = BorderFactory.createEmptyBorder(4, 8, 4, 8)
             font   = font.deriveFont(Font.BOLD)
         }
+        blameBtn.addActionListener {
+            if (showingBlame) {
+                showingBlame = false; blameBtn.text = "Blame"
+                if (currentDiffFile.isNotBlank()) showFileDiff(currentDiffFile, currentDiffStaged)
+            } else {
+                showingBlame = true; blameBtn.text = "Diff"
+                if (currentDiffFile.isNotBlank()) showBlame(currentDiffFile, null)
+            }
+        }
         val diffTopBar = JPanel(BorderLayout()).apply {
             border = BorderFactory.createMatteBorder(0, 0, 1, 0,
                 UIManager.getColor("Separator.foreground") ?: Color(0x44_44_44))
             add(diffFileNameLabel, BorderLayout.WEST)
+            add(blameBtn.apply { border = BorderFactory.createEmptyBorder(2, 8, 2, 8) }, BorderLayout.EAST)
         }
         val diffOuter = JPanel(BorderLayout()).apply {
             add(diffTopBar,    BorderLayout.NORTH)
             add(diffScrollPane, BorderLayout.CENTER)
+        }
+
+        // ── Conflict banner ───────────────────────────────────────────────────
+        conflictContinueBtn.addActionListener {
+            val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
+                           java.io.File(git.repo, ".git/rebase-apply").exists()
+            if (isRebase) runWithProgress("Continuing rebase…") { git.rebaseContinue() }
+            else commitMsgField.requestFocus()
+        }
+        conflictAbortBtn.addActionListener {
+            val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
+                           java.io.File(git.repo, ".git/rebase-apply").exists()
+            if (isRebase) runWithProgress("Aborting rebase…")  { git.rebaseAbort()  }
+            else          runWithProgress("Aborting merge…")   { git.mergeAbort()   }
+            refresh()
+        }
+        conflictBanner.apply {
+            isVisible  = false
+            layout     = BorderLayout()
+            background = Color(0x60, 0x38, 0x08)
+            border     = BorderFactory.createEmptyBorder(5, 8, 5, 8)
+            conflictBannerLabel.foreground = Color(0xFF, 0xCC, 0x80)
+            add(conflictBannerLabel, BorderLayout.CENTER)
+            add(JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply {
+                isOpaque = false; add(conflictContinueBtn); add(conflictAbortBtn)
+            }, BorderLayout.EAST)
         }
 
         // ── File list vertical split ──────────────────────────────────────────
@@ -441,8 +527,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             add(bottomBar,                   BorderLayout.SOUTH)
         }
 
-        return JSplitPane(JSplitPane.VERTICAL_SPLIT, topHalf, commitArea).apply {
+        val mainSplit = JSplitPane(JSplitPane.VERTICAL_SPLIT, topHalf, commitArea).apply {
             resizeWeight = 0.75
+        }
+        return JPanel(BorderLayout()).apply {
+            add(conflictBanner, BorderLayout.NORTH)
+            add(mainSplit,      BorderLayout.CENTER)
         }
     }
 
@@ -452,15 +542,34 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             override fun done() {
                 val out = try { get() } catch (e: Exception) { return }
                 stagedModel.clear(); unstagedModel.clear()
+                val conflictCodes = setOf("UU","AA","DD","AU","UA","DU","UD")
+                val conflictFiles = mutableListOf<String>()
                 for (line in out.lines()) {
                     if (line.length < 3 || line.startsWith("##")) continue
-                    val x  = line[0]; val y = line[1]; val file = line.substring(3)
+                    val x    = line[0]; val y = line[1]; val file = line.substring(3)
                     if (matchesIgnorePattern(file)) continue
-                    if (x != ' ' && x != '?') stagedModel.addElement("$x $file")
-                    if (y == 'M' || y == 'D' || y == '?') unstagedModel.addElement("$y $file")
+                    val code = "$x$y"
+                    if (code in conflictCodes) {
+                        conflictFiles.add(file)
+                        unstagedModel.addElement("! $file")
+                    } else {
+                        if (x != ' ' && x != '?') stagedModel.addElement("$x $file")
+                        if (y == 'M' || y == 'D' || y == '?') unstagedModel.addElement("$y $file")
+                    }
                 }
                 stagedHeaderLabel.text   = "Staged files (${stagedModel.size()} files)"
                 unstagedHeaderLabel.text = "Unstaged files (${unstagedModel.size()} files)"
+                // Update conflict banner
+                if (conflictFiles.isNotEmpty()) {
+                    val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
+                                   java.io.File(git.repo, ".git/rebase-apply").exists()
+                    val op = if (isRebase) "Rebase" else "Merge"
+                    conflictBannerLabel.text = "⚠  $op in progress — ${conflictFiles.size} conflict(s)"
+                    conflictContinueBtn.text = if (isRebase) "Continue Rebase" else "Commit Merge"
+                    conflictBanner.isVisible = true
+                } else {
+                    conflictBanner.isVisible = false
+                }
             }
         }.execute()
     }
@@ -499,6 +608,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     private fun showFileDiff(file: String, staged: Boolean) {
+        currentDiffFile   = file
+        currentDiffStaged = staged
+        showingBlame      = false
+        blameBtn.text     = "Blame"
+        blameBtn.isVisible = true
         diffFileNameLabel.text = file
         object : SwingWorker<String, Void>() {
             override fun doInBackground(): String =
@@ -1410,9 +1524,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
 
         // ── Apply to table ────────────────────────────────────────────────────
-        val previousHash = commitList.getOrNull(commitTable.selectedRow)?.hash
+        val previousHash = filteredCommits.getOrNull(commitTable.selectedRow)?.hash
         commitList.clear(); commitList.addAll(localList)
-        commitTableModel.fireTableDataChanged()
+        filterCommits(searchField.text)   // repopulates filteredCommits + fires tableDataChanged
 
         val maxLanes = (localList.maxOfOrNull { it.x } ?: 0) + 1
         val colW = (maxLanes * CommitGraphCell.LANE_W + CommitGraphCell.H_OFFSET * 2).coerceIn(60, 300)
@@ -1420,9 +1534,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         // Restore previous selection; fall back to row 0 (HEAD / uncommitted)
         val targetRow = if (previousHash != null)
-            commitList.indexOfFirst { it.hash == previousHash }.takeIf { it >= 0 } ?: 0
+            filteredCommits.indexOfFirst { it.hash == previousHash }.takeIf { it >= 0 } ?: 0
         else 0
-        if (commitList.isNotEmpty()) {
+        if (filteredCommits.isNotEmpty()) {
             commitTable.selectionModel.setSelectionInterval(targetRow, targetRow)
             commitTable.scrollRectToVisible(commitTable.getCellRect(targetRow, 0, true))
         }
@@ -1491,7 +1605,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     fun openRemote()   = Thread { (OS.BROWSER  + git.remoteUrl().output).execute() }.start()
 
     fun selectCommit(hash: String) {
-        val idx = commitList.indexOfFirst { it.hash == hash }
+        val idx = filteredCommits.indexOfFirst { it.hash == hash }
         if (idx >= 0) {
             mainCards.show(mainContainer, CARD_HISTORY)
             commitTable.selectionModel.setSelectionInterval(idx, idx)
@@ -1509,6 +1623,63 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             catch (_: Exception) { false }
         }
     }
+
+    // ── Commit search ─────────────────────────────────────────────────────────
+
+    private fun filterCommits(query: String) {
+        val q = query.trim().lowercase()
+        filteredCommits.clear()
+        filteredCommits.addAll(
+            if (q.isEmpty()) commitList
+            else commitList.filter { c ->
+                runCatching {
+                    c.title.lowercase().contains(q) ||
+                    c.author.lowercase().contains(q) ||
+                    c.committer.lowercase().contains(q) ||
+                    c.hash.startsWith(q, ignoreCase = true) ||
+                    c.shortHash.startsWith(q, ignoreCase = true)
+                }.getOrDefault(false)
+            }
+        )
+        commitTableModel.fireTableDataChanged()
+    }
+
+    // ── .gitignore quick-add ──────────────────────────────────────────────────
+
+    private fun showIgnoreDialog(filePath: String) {
+        val name   = filePath.substringAfterLast("/")
+        val ext    = if ('.' in name) "*.${name.substringAfterLast('.')}" else null
+        val folder = if ('/' in filePath) "${filePath.substringBeforeLast('/')}/" else null
+        val opts   = listOfNotNull(name, ext, folder).toTypedArray()
+        val combo  = JComboBox(opts)
+        val result = JOptionPane.showConfirmDialog(this, combo, "Add to .gitignore",
+            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE)
+        if (result != JOptionPane.OK_OPTION) return
+        java.io.File(git.repo, ".gitignore").appendText("\n${combo.selectedItem}\n")
+        refreshFileStatus()
+    }
+
+    // ── File blame ────────────────────────────────────────────────────────────
+
+    private fun showBlame(file: String, rev: String?) {
+        diffFileNameLabel.text = "$file  (blame)"
+        object : SwingWorker<String, Void>() {
+            override fun doInBackground() = git.blame(file, rev).output
+            override fun done() {
+                val out = try { get() } catch (e: Exception) { return }
+                diffScrollPane.setViewportView(buildBlameView(out))
+                diffScrollPane.revalidate()
+            }
+        }.execute()
+    }
+
+    private fun buildBlameView(blameOutput: String): JTextArea =
+        JTextArea(blameOutput).apply {
+            isEditable = false
+            font       = Font(com.gitnarwhal.utils.Settings.diffFontFamily, Font.PLAIN, com.gitnarwhal.utils.Settings.diffFontSize)
+            background = UIManager.getColor("EditorPane.background") ?: Color(0x2B, 0x2B, 0x2B)
+            foreground = UIManager.getColor("Label.foreground") ?: Color.WHITE
+        }
 
     private fun menuItem(text: String, action: () -> Unit) =
         JMenuItem(text).apply { addActionListener { action() } }
