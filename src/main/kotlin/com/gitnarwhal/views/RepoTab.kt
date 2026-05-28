@@ -746,6 +746,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         if (msg.isEmpty() && !amendCheckBox.isSelected) {
             showError("Commit", "Commit message is required"); return
         }
+        val shouldPush = pushImmediatelyCheckBox.isSelected
         object : SwingWorker<Pair<Boolean, String>, Void>() {
             override fun doInBackground(): Pair<Boolean, String> {
                 val result = when {
@@ -753,21 +754,17 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     amendCheckBox.isSelected                  -> git.commitAmend(msg)
                     else                                      -> git.commit(msg)
                 }
-                if (!result.success) return false to result.output
-                if (pushImmediatelyCheckBox.isSelected) {
-                    val push = git.push()
-                    return push.success to push.output
-                }
-                return true to ""
+                return result.success to result.output
             }
             override fun done() {
                 val (ok, out) = try { get() } catch (e: Exception) { false to (e.message ?: "") }
                 if (!ok) { showError("Commit failed", out); return }
-                commitMsgField.text            = ""
-                amendCheckBox.isSelected       = false
+                commitMsgField.text                = ""
+                amendCheckBox.isSelected           = false
                 pushImmediatelyCheckBox.isSelected = false
                 refresh()
                 refreshFileStatus()
+                if (shouldPush) push()
             }
         }.execute()
     }
