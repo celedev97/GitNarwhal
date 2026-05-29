@@ -1,9 +1,8 @@
 package com.gitnarwhal.utils
 
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
+import java.nio.file.Files
 
 class ThemeServiceTest {
 
@@ -36,5 +35,72 @@ class ThemeServiceTest {
         val stream = ThemeService::class.java.getResourceAsStream(resource)
         assertNotNull(stream, "default theme '$resource' should resolve on classpath")
         stream?.close()
+    }
+
+    @Test
+    fun `registerDefaultsSource does not throw`() {
+        assertDoesNotThrow { ThemeService.registerDefaultsSource() }
+    }
+
+    @Test
+    fun `Theme data class toString returns name`() {
+        val theme = Theme("My Theme", "classpath:/some/path.json", dark = true)
+        assertEquals("My Theme", theme.toString())
+    }
+
+    @Test
+    fun `Theme data class equals and copy work`() {
+        val a = Theme("Dark", "classpath:/dark.json", dark = true)
+        val b = a.copy()
+        assertEquals(a, b)
+        assertEquals(a.hashCode(), b.hashCode())
+        val c = a.copy(name = "Light", dark = false)
+        assertNotEquals(a, c)
+    }
+
+    @Test
+    fun `listThemes returns themes with non-blank paths`() {
+        val themes = ThemeService.listThemes()
+        assertTrue(themes.all { it.path.isNotBlank() }, "all themes should have non-blank paths")
+        assertTrue(themes.all { it.name.isNotBlank() }, "all themes should have non-blank names")
+    }
+
+    @Test
+    fun `applyFromSettings runs without throwing`() {
+        // load() catches all exceptions internally; safe even in headless mode
+        assertDoesNotThrow { ThemeService.applyFromSettings() }
+    }
+
+    @Test
+    fun `applyFromSettings handles blank theme by using default`() {
+        val orig = Settings.theme
+        try {
+            Settings.theme = ""
+            assertDoesNotThrow { ThemeService.applyFromSettings() }
+        } finally {
+            Settings.theme = orig
+        }
+    }
+
+    @Test
+    fun `setAndApply loads a classpath theme without throwing`() {
+        val orig = Settings.theme
+        try {
+            assertDoesNotThrow { ThemeService.setAndApply(ThemeService.defaultThemePath()) }
+        } finally {
+            Settings.theme = orig
+        }
+    }
+
+    @Test
+    fun `applyFromSettings falls back gracefully for nonexistent path`() {
+        val orig = Settings.theme
+        try {
+            Settings.theme = "/nonexistent/path/theme.json"
+            // load() will fail but catch the exception; applyFromSettings tries fallback
+            assertDoesNotThrow { ThemeService.applyFromSettings() }
+        } finally {
+            Settings.theme = orig
+        }
     }
 }

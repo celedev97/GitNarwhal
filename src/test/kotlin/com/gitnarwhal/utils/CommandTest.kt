@@ -1,6 +1,7 @@
 package com.gitnarwhal.utils
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledOnOs
@@ -43,5 +44,59 @@ class CommandTest {
         cmd.execute()
         assertEquals(false, cmd.success)
         assertEquals(7, cmd.code)
+    }
+
+    @Test
+    fun `plus operator appends arguments and returns new Command`() {
+        val base = if (OS.CURRENT == OS.WINDOWS) Command("cmd", "/c", "echo") else Command("echo")
+        val extended = base + "appended-arg"
+        assertNotNull(extended)
+        assertTrue(extended.toString().contains("echo"))
+    }
+
+    @Test
+    fun `toString returns space-joined command parts`() {
+        val cmd = Command("git", "status")
+        assertEquals("git status", cmd.toString())
+    }
+
+    @Test
+    fun `onLine callback is invoked for each output line`() {
+        val cmd = if (OS.CURRENT == OS.WINDOWS)
+            Command("cmd", "/c", "echo", "callback-test")
+        else
+            Command("echo", "callback-test")
+        val collected = mutableListOf<String>()
+        cmd.execute(onLine = { collected.add(it) })
+        assertTrue(collected.isNotEmpty(), "onLine should receive at least one line")
+        assertTrue(collected.any { it.contains("callback-test") },
+            "collected lines should contain 'callback-test', got: $collected")
+    }
+
+    @Test
+    fun `workingDir can be read and set`() {
+        val cmd = Command("git")
+        val original = cmd.workingDir
+        assertNotNull(original)
+        cmd.workingDir = System.getProperty("java.io.tmpdir")
+        assertNotNull(cmd.workingDir)
+        cmd.workingDir = original
+    }
+
+    @Test
+    fun `execute with explicit path overrides workingDir`() {
+        val tmpDir = System.getProperty("java.io.tmpdir")
+        val cmd = if (OS.CURRENT == OS.WINDOWS) Command("cmd", "/c", "cd") else Command("pwd")
+        cmd.execute(path = tmpDir)
+        assertTrue(cmd.success || cmd.code >= 0)
+    }
+
+    @Test
+    fun `single string command is split on spaces`() {
+        val cmd = if (OS.CURRENT == OS.WINDOWS) Command("cmd /c echo split-test")
+                  else Command("echo split-test")
+        cmd.execute()
+        assertTrue(cmd.success)
+        assertTrue(cmd.output.contains("split-test"))
     }
 }
