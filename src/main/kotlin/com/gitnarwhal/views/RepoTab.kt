@@ -22,6 +22,7 @@ import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Component
 import java.awt.Dimension
+import java.awt.GridBagLayout
 import java.awt.FlowLayout
 import java.awt.Rectangle
 import java.awt.Font
@@ -694,14 +695,25 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             background = bgColor
         }
         if (diffText.isBlank()) {
-            container.add(JLabel(when {
-                commitHash != null -> "No diff available"
-                staged             -> "No staged changes"
-                else               -> "No unstaged changes"
-            }).apply {
-                border     = BorderFactory.createEmptyBorder(12, 12, 12, 12)
-                foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+            val msg = when {
+                commitHash != null -> "No changes in this file have been detected, or it is a binary file."
+                staged             -> "No staged changes in this file."
+                else               -> "No changes in this file have been detected, or it is a binary file\nor it is configured to be ignored by the file patterns."
+            }
+            container.add(object : JPanel(GridBagLayout()), Scrollable {
+                override fun getPreferredScrollableViewportSize() = preferredSize
+                override fun getScrollableUnitIncrement(r: Rectangle, o: Int, d: Int) = 16
+                override fun getScrollableBlockIncrement(r: Rectangle, o: Int, d: Int) = r.height
+                override fun getScrollableTracksViewportWidth()  = true
+                override fun getScrollableTracksViewportHeight() = true
+            }.apply {
+                background = bgColor
+                maximumSize = Dimension(Int.MAX_VALUE, Int.MAX_VALUE)
                 alignmentX = Component.LEFT_ALIGNMENT
+                add(JLabel("<html><div style='text-align:center'>${ msg.replace("\n", "<br>") }</div></html>").apply {
+                    foreground = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+                    font       = font.deriveFont(Font.PLAIN, 12f)
+                })
             })
             return container
         }
