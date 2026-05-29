@@ -139,7 +139,7 @@ class PushOverlay(private val git: Git, private val repoName: String) : JPanel(n
                 isOpaque = false; add(pushTagsCk); add(forcePushCk)
             }, BorderLayout.WEST)
             add(JPanel(FlowLayout(FlowLayout.RIGHT, 8, 0)).apply {
-                isOpaque = false; add(cancelBtn); add(pushBtn)
+                isOpaque = false; add(pushBtn); add(cancelBtn)
             }, BorderLayout.EAST)
         }
 
