@@ -28,6 +28,7 @@ object Settings : JSONObject(settingsJSON) {
     // General
     var reopenTabs          by JSONSetting(true)
     var defaultCloneFolder  by JSONSetting("")
+    var terminalCommand     by JSONSetting("")
 
     // Diff
     var diffFontFamily      by JSONSetting("Monospaced")
