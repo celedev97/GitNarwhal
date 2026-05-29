@@ -21,6 +21,7 @@ class Commit(var hash: String, val repoTab: RepoTab) {
     // Graph lane colors & line data (assigned by RepoTab.applyCommits)
     var color: Color                          = Color.GRAY
     var refs: List<RefInfo>                   = emptyList()
+    var isCurrentHead: Boolean                = false
     var graphTopLines: List<Pair<Int, Color>> = emptyList()  // (lane, color) active above this row
     var graphBottomLines: List<Pair<Int, Color>> = emptyList()  // (lane, color) active below this row
     var graphForkLines: List<Pair<Int, Color>> = emptyList()  // (parentLane, color) diagonals from dot

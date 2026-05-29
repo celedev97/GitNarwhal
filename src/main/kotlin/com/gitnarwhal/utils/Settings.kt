@@ -43,6 +43,11 @@ object Settings : JSONObject(settingsJSON) {
     // Custom Actions
     var customActions       by JSONSetting(JSONArray())
 
+    // UI
+    var columnWidths         by JSONSetting(JSONObject().also {
+        it.put("graph", 80); it.put("date", 135); it.put("committer", 120); it.put("commit", 70)
+    })
+
 }
 
 fun Settings.save() {
