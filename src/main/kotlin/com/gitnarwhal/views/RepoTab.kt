@@ -168,6 +168,15 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private lateinit var branchSubSplit:    JSplitPane  // branches ↕ submodules
     private lateinit var mainSidebarSplit:  JSplitPane  // (branches+sub) ↕ stashes
 
+    // ── Bottom loading bar ────────────────────────────────────────────────────
+    private val loadingBar = JProgressBar().apply {
+        isIndeterminate  = true
+        isVisible        = false
+        preferredSize    = Dimension(0, 3)
+        isStringPainted  = false
+        border           = null
+    }
+
     // ── Blame button (in diff top bar) ────────────────────────────────────────
     private val blameBtn      = JButton("Blame").apply { isVisible = false }
     private var currentDiffFile   = ""
@@ -256,6 +265,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         add(buildToolbar(), BorderLayout.NORTH)
         add(sideBarSplit,   BorderLayout.CENTER)
+        add(loadingBar,     BorderLayout.SOUTH)
 
         loadColumnWidths()
         commitScrollPane.viewport.addComponentListener(object : ComponentAdapter() {
@@ -1318,12 +1328,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         stashesPanel.add(JScrollPane(stashList), BorderLayout.CENTER)
 
         // Inner split: Branches ↕ Submodules
-        // dividerSize = 0 until submodules are found (invisible non-draggable)
+        // dividerSize = 0 until submodules are found (invisible, non-draggable)
         branchSubSplit = JSplitPane(JSplitPane.VERTICAL_SPLIT, branchesPanel, submodulesPanel).apply {
             resizeWeight       = 1.0   // branches absorbs all extra space when submodules absent
-            dividerSize        = 0     // hidden until submodules exist
             isContinuousLayout = true
             border             = null
+            dividerSize        = 0     // hidden until submodules exist
         }
 
         // Outer split: (Branches/Submodules) ↕ Stashes
@@ -1632,6 +1642,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     )
 
     fun refresh() {
+        showLoading()
         object : SwingWorker<RefreshSnapshot, Void>() {
             override fun doInBackground(): RefreshSnapshot {
                 val b  = git.branches()
@@ -1654,7 +1665,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 )
             }
             override fun done() {
-                val snap = try { get() } catch (e: Exception) { return }
+                val snap = try { get() } catch (e: Exception) { hideLoading(); return }
                 if (snap.branchOk) applyBranches(snap.branchesOut)
                 if (snap.logOk)    applyCommits(snap.logOut, snap.modifiedCount > 0)
                 applyStashes(snap.stashOut)
@@ -1667,6 +1678,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 trackingBranchRef = snap.tracking?.second
                 updatePushCheckboxLabel()
                 applySubmodules(snap.submoduleOut)
+                hideLoading()
             }
         }.execute()
     }
@@ -1700,15 +1712,18 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         applySubmoduleFilter()
 
         // Show/hide the inner split divider when submodule presence changes
-        val normalDivSize = UIManager.getInt("SplitPaneDivider.size").takeIf { it > 0 } ?: 5
+        val normalDivSize = UIManager.getInt("SplitPaneDivider.size").takeIf { it > 0 } ?: 6
         if (hasSubmodules && !hadSubmodules) {
             branchSubSplit.dividerSize = normalDivSize
+            // Set divider after layout pass so height is known
             SwingUtilities.invokeLater {
-                branchSubSplit.dividerLocation =
-                    (branchSubSplit.height - 140).coerceAtLeast(60)
+                val h = branchSubSplit.height
+                branchSubSplit.dividerLocation = if (h > 0) (h - 140).coerceAtLeast(60)
+                                                 else       200
             }
         } else if (!hasSubmodules && hadSubmodules) {
-            branchSubSplit.dividerSize = 0
+            branchSubSplit.dividerSize     = 0
+            branchSubSplit.dividerLocation = Int.MAX_VALUE
         }
     }
 
@@ -1812,6 +1827,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         else mainView.addTab(RepoTab(subPath, info.name))
     }
 
+    private var loadingCount = 0
+    private fun showLoading() { if (++loadingCount == 1) loadingBar.isVisible = true }
+    private fun hideLoading() { if (--loadingCount <= 0) { loadingCount = 0; loadingBar.isVisible = false } }
+
     private fun updatePushCheckboxLabel() {
         val r = trackingRemote; val b = trackingBranchRef
         pushImmediatelyCheckBox.text      = if (r != null && b != null)
@@ -1820,21 +1839,25 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     fun refreshBranches() {
+        showLoading()
         object : SwingWorker<String?, Void>() {
             override fun doInBackground() = git.branches().output.takeIf { git.branches().success }
             override fun done() {
-                val out = try { get() } catch (e: Exception) { null } ?: return
+                val out = try { get() } catch (e: Exception) { hideLoading(); null } ?: run { hideLoading(); return }
                 applyBranches(out)
+                hideLoading()
             }
         }.execute()
     }
 
     fun refreshStashes() {
+        showLoading()
         object : SwingWorker<String, Void>() {
             override fun doInBackground() = git.stashList().output
             override fun done() {
-                val out = try { get() } catch (e: Exception) { "" }
+                val out = try { get() } catch (e: Exception) { hideLoading(); "" }
                 applyStashes(out)
+                hideLoading()
             }
         }.execute()
     }
