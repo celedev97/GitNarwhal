@@ -890,6 +890,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             showError("Commit", "Commit message is required"); return
         }
         val shouldPush = pushImmediatelyCheckBox.isSelected
+        val progress = ProgressOverlay()
+        progress.show(SwingUtilities.getRootPane(this), "Committing…")
         object : SwingWorker<Pair<Boolean, String>, Void>() {
             override fun doInBackground(): Pair<Boolean, String> {
                 val result = when {
@@ -901,13 +903,15 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             }
             override fun done() {
                 val (ok, out) = try { get() } catch (e: Exception) { false to (e.message ?: "") }
-                if (!ok) { showError("Commit failed", out); return }
-                commitMsgField.text                = ""
-                amendCheckBox.isSelected           = false
-                pushImmediatelyCheckBox.isSelected = false
-                refresh()
-                refreshFileStatus()
-                if (shouldPush) push()
+                progress.finish(out, ok)
+                if (ok) {
+                    commitMsgField.text                = ""
+                    amendCheckBox.isSelected           = false
+                    pushImmediatelyCheckBox.isSelected = false
+                    refresh()
+                    refreshFileStatus()
+                    if (shouldPush) push()
+                }
             }
         }.execute()
     }
