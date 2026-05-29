@@ -104,9 +104,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val path: String, val name: String, val hash: String,
         val isDirty: Boolean, val isUninitialized: Boolean
     )
-    private val allSubmodules        = mutableListOf<SubmoduleInfo>()
-    private val submoduleListModel   = DefaultListModel<SubmoduleInfo>()
-    private val submoduleList        = JList(submoduleListModel)
+    private val allSubmodules           = mutableListOf<SubmoduleInfo>()
+    private val submoduleRoot           = DefaultMutableTreeNode("root")
+    private val submoduleTreeModel      = DefaultTreeModel(submoduleRoot)
+    private val submoduleTree           = JTree(submoduleTreeModel)
     private val submoduleOnlyModifiedCk = JCheckBox("Only modified")
     private lateinit var submodulesPanel: JPanel
     private val branchTreeModel    = DefaultTreeModel(branchRoot)
@@ -1667,9 +1668,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             val rest = line.drop(1).trim()
             val spaceIdx = rest.indexOf(' ')
             if (spaceIdx < 0) continue
-            val hash = rest.substring(0, spaceIdx)
+            val hash      = rest.substring(0, spaceIdx)
             val remainder = rest.substring(spaceIdx + 1).trim()
-            val subPath = remainder.substringBefore(" (").substringBefore("\t").trim()
+            val subPath   = remainder.substringBefore(" (").substringBefore("\t").trim()
             if (subPath.isBlank()) continue
             val name = subPath.substringAfterLast("/").ifBlank { subPath }
             allSubmodules += SubmoduleInfo(
@@ -1687,50 +1688,90 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     private fun applySubmoduleFilter() {
-        val showAll = !submoduleOnlyModifiedCk.isSelected
-        submoduleListModel.clear()
-        allSubmodules.filter { showAll || it.isDirty }.forEach { submoduleListModel.addElement(it) }
+        submoduleRoot.removeAllChildren()
+        val visible = if (!submoduleOnlyModifiedCk.isSelected) allSubmodules
+                      else allSubmodules.filter { it.isDirty }
+        visible.forEach { insertSubmoduleNode(it) }
+        submoduleTreeModel.reload()
+        for (i in 0 until submoduleTree.rowCount) submoduleTree.expandRow(i)
+    }
+
+    /** Inserts a submodule into the tree, creating intermediate folder nodes as needed. */
+    private fun insertSubmoduleNode(info: SubmoduleInfo) {
+        val segs    = info.path.split("/")
+        var current = submoduleRoot
+        for (i in 0 until segs.size - 1) {
+            val seg = segs[i]
+            current = current.children().asSequence()
+                .filterIsInstance<DefaultMutableTreeNode>()
+                .firstOrNull { it.userObject == seg }
+                ?: DefaultMutableTreeNode(seg).also { current.add(it) }
+        }
+        current.add(DefaultMutableTreeNode(info))
     }
 
     private fun buildSubmodulesPanel(): JPanel {
         val panel = JPanel(BorderLayout()).apply {
-            border = BorderFactory.createTitledBorder("Submodules")
+            border        = BorderFactory.createTitledBorder("Submodules")
             preferredSize = Dimension(0, 140)
         }
         submoduleOnlyModifiedCk.isOpaque = false
         submoduleOnlyModifiedCk.addActionListener { applySubmoduleFilter() }
         panel.add(submoduleOnlyModifiedCk, BorderLayout.NORTH)
 
-        submoduleList.cellRenderer  = SubmoduleCellRenderer()
-        submoduleList.selectionMode = ListSelectionModel.SINGLE_SELECTION
-        submoduleList.addMouseListener(object : java.awt.event.MouseAdapter() {
+        submoduleTree.isRootVisible    = false
+        submoduleTree.showsRootHandles = true
+        submoduleTree.toggleClickCount = -1
+        submoduleTree.cellRenderer     = SubmoduleTreeRenderer()
+        submoduleTree.selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
+        submoduleTree.addMouseListener(object : java.awt.event.MouseAdapter() {
             override fun mouseClicked(e: java.awt.event.MouseEvent) {
-                if (e.clickCount == 2)
-                    submoduleList.selectedValue?.let { openSubmoduleTab(it) }
+                if (e.clickCount == 2) {
+                    val tp   = submoduleTree.getPathForLocation(e.x, e.y) ?: return
+                    val info = (tp.lastPathComponent as? DefaultMutableTreeNode)
+                        ?.userObject as? SubmoduleInfo ?: return
+                    openSubmoduleTab(info)
+                }
             }
         })
-        panel.add(JScrollPane(submoduleList), BorderLayout.CENTER)
+        panel.add(JScrollPane(submoduleTree), BorderLayout.CENTER)
         return panel
     }
 
-    private inner class SubmoduleCellRenderer : DefaultListCellRenderer() {
-        private val alertColor = Color(0xFF, 0xB3, 0x00)
+    private inner class SubmoduleTreeRenderer : DefaultTreeCellRenderer() {
+        init { setLeafIcon(null); setOpenIcon(null); setClosedIcon(null) }
+
+        private val alertColor get() = Color(0xFF, 0xB3, 0x00)
         private val mutedColor get() = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
 
-        override fun getListCellRendererComponent(
-            list: JList<*>, value: Any?, index: Int,
-            isSelected: Boolean, cellHasFocus: Boolean
+        override fun getTreeCellRendererComponent(
+            tree: JTree, value: Any?, sel: Boolean, expanded: Boolean,
+            leaf: Boolean, row: Int, hasFocus: Boolean
         ): java.awt.Component {
-            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
-            val info = value as? SubmoduleInfo ?: return this
-            text        = info.name
-            toolTipText = info.path
-            icon = when {
-                info.isDirty         -> FontIcon.of(MaterialDesign.MDI_ALERT,         14, alertColor)
-                info.isUninitialized -> FontIcon.of(MaterialDesign.MDI_FOLDER_REMOVE, 14, mutedColor)
-                else                 -> FontIcon.of(MaterialDesign.MDI_FOLDER,        14, foreground)
+            super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus)
+            val node = value as? DefaultMutableTreeNode ?: return this
+            when (val obj = node.userObject) {
+                is SubmoduleInfo -> {
+                    text        = obj.name
+                    toolTipText = obj.path
+                    icon = when {
+                        obj.isDirty         -> FontIcon.of(MaterialDesign.MDI_ALERT,         14, alertColor)
+                        obj.isUninitialized -> FontIcon.of(MaterialDesign.MDI_FOLDER_REMOVE, 14, mutedColor)
+                        else                -> FontIcon.of(MaterialDesign.MDI_FOLDER,        14, foreground)
+                    }
+                    if (obj.isUninitialized) foreground = mutedColor
+                }
+                is String -> {
+                    text        = obj
+                    toolTipText = null
+                    // Folder node: amber if any child is dirty
+                    val hasDirtyChild = node.breadthFirstEnumeration().asSequence()
+                        .mapNotNull { (it as? DefaultMutableTreeNode)?.userObject as? SubmoduleInfo }
+                        .any { it.isDirty }
+                    icon = FontIcon.of(MaterialDesign.MDI_FOLDER, 14,
+                        if (hasDirtyChild) alertColor else foreground)
+                }
             }
-            if (info.isUninitialized) foreground = mutedColor
             return this
         }
     }
