@@ -106,6 +106,31 @@ class ProgressOverlay : JPanel(null) {
         }
     }
 
+    /** Append a line of streaming output; makes the output panel visible immediately. */
+    fun appendOutput(line: String) {
+        if (!outputScroll.isVisible) {
+            outputScroll.isVisible = true
+            repositionCard()
+        }
+        outputArea.append(line + "\n")
+        outputArea.caretPosition = outputArea.document.length
+    }
+
+    /** Call instead of [finish] when output was already streamed via [appendOutput]. */
+    fun finishStreaming(success: Boolean) {
+        progressBar.isIndeterminate = false
+        progressBar.value  = 100
+        statusLabel.text   = if (success) "Done." else "Failed."
+        closeBtn.isEnabled = true
+        if (!success) {
+            outputScroll.isVisible  = true
+            showOutputCk.isSelected = true
+            repositionCard()
+        } else if (!showOutputCk.isSelected) {
+            dismiss()   // success, user didn't pin output → auto-close
+        }
+    }
+
     override fun doLayout() {
         super.doLayout()
         repositionCard()
