@@ -406,10 +406,13 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
     // ── Button bar ────────────────────────────────────────────────────────────
 
     private fun buildButtonBar(): JPanel {
-        val bar = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 8))
+        val bar   = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 8))
+        val okBtn = JButton("OK").apply { addActionListener { applyChanges(); dispose() } }
         bar.add(JButton("Apply").apply  { addActionListener { applyChanges() } })
         bar.add(JButton("Cancel").apply { addActionListener { dispose() } })
-        bar.add(JButton("OK").apply     { addActionListener { applyChanges(); dispose() }; getRootPane().defaultButton = this })
+        bar.add(okBtn)
+        // defaultButton must be set after the dialog is in the Swing hierarchy (post-pack)
+        SwingUtilities.invokeLater { getRootPane()?.defaultButton = okBtn }
         return bar
     }
 
