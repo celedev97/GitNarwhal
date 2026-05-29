@@ -164,6 +164,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         toolTipText = "Search field to filter on"
     }
 
+    // ── Sidebar resizable splits ──────────────────────────────────────────────
+    private lateinit var branchSubSplit:    JSplitPane  // branches ↕ submodules
+    private lateinit var mainSidebarSplit:  JSplitPane  // (branches+sub) ↕ stashes
+
     // ── Blame button (in diff top bar) ────────────────────────────────────────
     private val blameBtn      = JButton("Blame").apply { isVisible = false }
     private var currentDiffFile   = ""
@@ -1283,7 +1287,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private fun buildSidebar(): JPanel {
         val panel = JPanel(BorderLayout())
 
-        // WORKSPACE section
+        // WORKSPACE section (fixed height at top — not resizable)
         val workspacePanel = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
             border = BorderFactory.createEmptyBorder(4, 0, 4, 0)
@@ -1304,25 +1308,34 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
         branchesPanel.add(JScrollPane(branchTree), BorderLayout.CENTER)
 
+        // SUBMODULES section (shown/hidden dynamically)
+        submodulesPanel = buildSubmodulesPanel()
+
         // STASHES section
         val stashesPanel = JPanel(BorderLayout()).apply {
             border = BorderFactory.createTitledBorder("Stashes")
-            preferredSize = Dimension(0, 120)
         }
-        stashesPanel.add(stashList, BorderLayout.CENTER)
+        stashesPanel.add(JScrollPane(stashList), BorderLayout.CENTER)
 
-        // Submodules section (hidden until submodules are found)
-        submodulesPanel = buildSubmodulesPanel()
-        submodulesPanel.isVisible = false
+        // Inner split: Branches ↕ Submodules
+        // dividerSize = 0 until submodules are found (invisible non-draggable)
+        branchSubSplit = JSplitPane(JSplitPane.VERTICAL_SPLIT, branchesPanel, submodulesPanel).apply {
+            resizeWeight       = 1.0   // branches absorbs all extra space when submodules absent
+            dividerSize        = 0     // hidden until submodules exist
+            isContinuousLayout = true
+            border             = null
+        }
 
-        // Compose: workspace at top, then branches + submodules + stashes in a scroll
-        val sections = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
-        sections.add(workspacePanel)
-        sections.add(branchesPanel.apply { alignmentX = Component.LEFT_ALIGNMENT })
-        sections.add(submodulesPanel.apply { alignmentX = Component.LEFT_ALIGNMENT })
-        sections.add(stashesPanel.apply { alignmentX = Component.LEFT_ALIGNMENT })
+        // Outer split: (Branches/Submodules) ↕ Stashes
+        mainSidebarSplit = JSplitPane(JSplitPane.VERTICAL_SPLIT, branchSubSplit, stashesPanel).apply {
+            resizeWeight       = 0.75
+            dividerLocation    = 280
+            isContinuousLayout = true
+            border             = null
+        }
 
-        panel.add(JScrollPane(sections), BorderLayout.CENTER)
+        panel.add(workspacePanel,    BorderLayout.NORTH)
+        panel.add(mainSidebarSplit,  BorderLayout.CENTER)
         return panel
     }
 
@@ -1681,10 +1694,22 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 isUninitialized = flag == '-'
             )
         }
+        val hadSubmodules = submodulesPanel.isVisible
+        val hasSubmodules = allSubmodules.isNotEmpty()
+        submodulesPanel.isVisible = hasSubmodules
         applySubmoduleFilter()
-        submodulesPanel.isVisible = allSubmodules.isNotEmpty()
-        submodulesPanel.parent?.revalidate()
-        submodulesPanel.parent?.repaint()
+
+        // Show/hide the inner split divider when submodule presence changes
+        val normalDivSize = UIManager.getInt("SplitPaneDivider.size").takeIf { it > 0 } ?: 5
+        if (hasSubmodules && !hadSubmodules) {
+            branchSubSplit.dividerSize = normalDivSize
+            SwingUtilities.invokeLater {
+                branchSubSplit.dividerLocation =
+                    (branchSubSplit.height - 140).coerceAtLeast(60)
+            }
+        } else if (!hasSubmodules && hadSubmodules) {
+            branchSubSplit.dividerSize = 0
+        }
     }
 
     private fun applySubmoduleFilter() {
