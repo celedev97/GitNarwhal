@@ -150,25 +150,34 @@ class PullOverlay(private val git: Git) : JPanel(null) {
 
     private data class LoadResult(
         val remotes: List<String>, val url: String,
-        val remoteBranches: List<String>, val currentBranch: String
+        val remoteBranches: List<String>, val currentBranch: String,
+        val trackingRemote: String?, val trackingBranch: String?
     )
 
     private fun loadData() {
         object : SwingWorker<LoadResult, Void>() {
             override fun doInBackground(): LoadResult {
-                val remotes = git.remoteNames().ifEmpty { listOf("origin") }
-                val remote  = remotes.first()
+                val current = git.currentBranch().output.trim()
+                val tracking = git.trackingBranch(current)
+                val remotes  = git.remoteNames().ifEmpty { listOf("origin") }
+                val remote   = tracking?.first ?: remotes.first()
                 return LoadResult(
                     remotes,
                     git.remoteUrl(remote).output.trim(),
                     git.remoteBranchNames(remote),
-                    git.currentBranch().output.trim()
+                    current,
+                    tracking?.first,
+                    tracking?.second
                 )
             }
             override fun done() {
                 val d = try { get() } catch (e: Exception) { return }
-                remoteCombo.removeAllItems();       d.remotes.forEach { remoteCombo.addItem(it) }
+                remoteCombo.removeAllItems(); d.remotes.forEach { remoteCombo.addItem(it) }
+                if (d.trackingRemote != null) remoteCombo.selectedItem = d.trackingRemote
                 remoteBranchCombo.removeAllItems(); d.remoteBranches.forEach { remoteBranchCombo.addItem(it) }
+                // Pre-select tracking branch, or clear selection if none
+                if (d.trackingBranch != null) remoteBranchCombo.selectedItem = d.trackingBranch
+                else remoteBranchCombo.selectedIndex = -1
                 urlField.text         = d.url
                 localBranchLabel.text = d.currentBranch.ifBlank { "—" }
             }
