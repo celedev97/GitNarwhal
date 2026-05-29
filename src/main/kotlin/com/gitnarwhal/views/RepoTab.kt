@@ -98,6 +98,17 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private val localBranchesNode  = DefaultMutableTreeNode("LOCAL BRANCHES")
     private val remoteBranchesNode = DefaultMutableTreeNode("REMOTE BRANCHES")
     private var isHeadDetached     = false
+
+    // ── Submodules ────────────────────────────────────────────────────────────
+    private data class SubmoduleInfo(
+        val path: String, val name: String, val hash: String,
+        val isDirty: Boolean, val isUninitialized: Boolean
+    )
+    private val allSubmodules        = mutableListOf<SubmoduleInfo>()
+    private val submoduleListModel   = DefaultListModel<SubmoduleInfo>()
+    private val submoduleList        = JList(submoduleListModel)
+    private val submoduleOnlyModifiedCk = JCheckBox("Only modified")
+    private lateinit var submodulesPanel: JPanel
     private val branchTreeModel    = DefaultTreeModel(branchRoot)
     private val branchTree: JTree
 
@@ -1299,10 +1310,15 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
         stashesPanel.add(stashList, BorderLayout.CENTER)
 
-        // Compose: workspace at top, then branches + stashes in a scroll
+        // Submodules section (hidden until submodules are found)
+        submodulesPanel = buildSubmodulesPanel()
+        submodulesPanel.isVisible = false
+
+        // Compose: workspace at top, then branches + submodules + stashes in a scroll
         val sections = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
         sections.add(workspacePanel)
         sections.add(branchesPanel.apply { alignmentX = Component.LEFT_ALIGNMENT })
+        sections.add(submodulesPanel.apply { alignmentX = Component.LEFT_ALIGNMENT })
         sections.add(stashesPanel.apply { alignmentX = Component.LEFT_ALIGNMENT })
 
         panel.add(JScrollPane(sections), BorderLayout.CENTER)
@@ -1597,7 +1613,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val unpulledCount: Int,
         val unpushedCount: Int,
         val currentBranch: String,
-        val tracking: Pair<String, String>?   // remote to trackingBranch
+        val tracking: Pair<String, String>?,  // remote to trackingBranch
+        val submoduleOut: String
     )
 
     fun refresh() {
@@ -1612,12 +1629,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 val unpushed = git.unpushedCount().output.trim().toIntOrNull() ?: 0
                 val branch   = git.currentBranch().output.trim()
                 val tracking = if (branch.isNotBlank()) git.trackingBranch(branch) else null
+                val sm       = git.submoduleStatus()
                 return RefreshSnapshot(
                     b.output, b.success, l.output, l.success,
                     if (s.success) s.output else "",
                     st.output,
                     modified, unpulled, unpushed,
-                    branch, tracking
+                    branch, tracking,
+                    sm.output
                 )
             }
             override fun done() {
@@ -1633,8 +1652,98 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 trackingRemote    = snap.tracking?.first
                 trackingBranchRef = snap.tracking?.second
                 updatePushCheckboxLabel()
+                applySubmodules(snap.submoduleOut)
             }
         }.execute()
+    }
+
+    // ── Submodule support ─────────────────────────────────────────────────────
+
+    private fun applySubmodules(output: String) {
+        allSubmodules.clear()
+        for (line in output.lines()) {
+            if (line.isBlank()) continue
+            val flag = line[0]
+            val rest = line.drop(1).trim()
+            val spaceIdx = rest.indexOf(' ')
+            if (spaceIdx < 0) continue
+            val hash = rest.substring(0, spaceIdx)
+            val remainder = rest.substring(spaceIdx + 1).trim()
+            val subPath = remainder.substringBefore(" (").substringBefore("\t").trim()
+            if (subPath.isBlank()) continue
+            val name = subPath.substringAfterLast("/").ifBlank { subPath }
+            allSubmodules += SubmoduleInfo(
+                path            = subPath,
+                name            = name,
+                hash            = hash,
+                isDirty         = flag == '+' || flag == 'U',
+                isUninitialized = flag == '-'
+            )
+        }
+        applySubmoduleFilter()
+        submodulesPanel.isVisible = allSubmodules.isNotEmpty()
+        submodulesPanel.parent?.revalidate()
+        submodulesPanel.parent?.repaint()
+    }
+
+    private fun applySubmoduleFilter() {
+        val showAll = !submoduleOnlyModifiedCk.isSelected
+        submoduleListModel.clear()
+        allSubmodules.filter { showAll || it.isDirty }.forEach { submoduleListModel.addElement(it) }
+    }
+
+    private fun buildSubmodulesPanel(): JPanel {
+        val panel = JPanel(BorderLayout()).apply {
+            border = BorderFactory.createTitledBorder("Submodules")
+            preferredSize = Dimension(0, 140)
+        }
+        submoduleOnlyModifiedCk.isOpaque = false
+        submoduleOnlyModifiedCk.addActionListener { applySubmoduleFilter() }
+        panel.add(submoduleOnlyModifiedCk, BorderLayout.NORTH)
+
+        submoduleList.cellRenderer  = SubmoduleCellRenderer()
+        submoduleList.selectionMode = ListSelectionModel.SINGLE_SELECTION
+        submoduleList.addMouseListener(object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                if (e.clickCount == 2)
+                    submoduleList.selectedValue?.let { openSubmoduleTab(it) }
+            }
+        })
+        panel.add(JScrollPane(submoduleList), BorderLayout.CENTER)
+        return panel
+    }
+
+    private inner class SubmoduleCellRenderer : DefaultListCellRenderer() {
+        private val alertColor = Color(0xFF, 0xB3, 0x00)
+        private val mutedColor get() = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+
+        override fun getListCellRendererComponent(
+            list: JList<*>, value: Any?, index: Int,
+            isSelected: Boolean, cellHasFocus: Boolean
+        ): java.awt.Component {
+            super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus)
+            val info = value as? SubmoduleInfo ?: return this
+            text        = info.name
+            toolTipText = info.path
+            icon = when {
+                info.isDirty         -> FontIcon.of(MaterialDesign.MDI_ALERT,         14, alertColor)
+                info.isUninitialized -> FontIcon.of(MaterialDesign.MDI_FOLDER_REMOVE, 14, mutedColor)
+                else                 -> FontIcon.of(MaterialDesign.MDI_FOLDER,        14, foreground)
+            }
+            if (info.isUninitialized) foreground = mutedColor
+            return this
+        }
+    }
+
+    private fun openSubmoduleTab(info: SubmoduleInfo) {
+        val subPath  = java.io.File(git.repo, info.path).canonicalPath
+        val mainView = javax.swing.SwingUtilities.getAncestorOfClass(
+            MainView::class.java, this) as? MainView ?: return
+        val existing = (0 until mainView.tabPane.tabCount)
+            .mapNotNull { mainView.tabPane.getComponentAt(it) as? RepoTab }
+            .firstOrNull { java.io.File(it.path).canonicalPath == subPath }
+        if (existing != null) mainView.selectTab(existing)
+        else mainView.addTab(RepoTab(subPath, info.name))
     }
 
     private fun updatePushCheckboxLabel() {

@@ -297,6 +297,7 @@ class Git(val repo: String) {
     //endregion
 
     //region stash / tag
+    fun submoduleStatus()                 = git("submodule", "status")
     fun stashList()                       = git("stash", "list")
     fun stashPush(message: String? = null) =
         if (message != null) git("stash", "push", "-m", message) else git("stash", "push")
