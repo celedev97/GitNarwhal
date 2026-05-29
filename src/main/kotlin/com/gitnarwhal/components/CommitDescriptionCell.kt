@@ -33,8 +33,7 @@ class CommitDescriptionCell : DefaultTableCellRenderer() {
         try {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
 
-            val midY     = height / 2
-            val pillFont = font.deriveFont(Font.PLAIN, (font.size - 2).toFloat())
+            val midY = height / 2
             var x = 4
 
             // ── Ref pills ─────────────────────────────────────────────────────
@@ -45,7 +44,11 @@ class CommitDescriptionCell : DefaultTableCellRenderer() {
                     RefType.REMOTE_BRANCH -> Color(0x1A, 0x23, 0x7E) to Color(0x90, 0xCA, 0xF9)
                     RefType.TAG           -> Color(0x5E, 0x35, 0xB1) to Color(0xCE, 0x93, 0xD8)
                 }
-                g2.font = pillFont
+                val isCurrent = c.isCurrentHead && ref.type == RefType.LOCAL_BRANCH
+                g2.font = font.deriveFont(
+                    if (isCurrent) Font.BOLD else Font.PLAIN,
+                    (font.size - 2).toFloat()
+                )
                 val fm  = g2.fontMetrics
                 val tw  = fm.stringWidth(ref.name)
                 val pw  = tw + 10
