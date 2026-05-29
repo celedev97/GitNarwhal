@@ -920,18 +920,19 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val shouldPush = pushImmediatelyCheckBox.isSelected
         val progress = ProgressOverlay()
         progress.show(SwingUtilities.getRootPane(this), "Committing…")
-        object : SwingWorker<Pair<Boolean, String>, Void>() {
-            override fun doInBackground(): Pair<Boolean, String> {
+        object : SwingWorker<Boolean, String>() {
+            override fun doInBackground(): Boolean {
                 val result = when {
-                    amendCheckBox.isSelected && msg.isEmpty() -> git.commitAmend()
-                    amendCheckBox.isSelected                  -> git.commitAmend(msg)
-                    else                                      -> git.commit(msg)
+                    amendCheckBox.isSelected && msg.isEmpty() -> git.commitAmendStream(onLine = { publish(it) })
+                    amendCheckBox.isSelected                  -> git.commitAmendStream(msg,    onLine = { publish(it) })
+                    else                                      -> git.commitStream(msg)               { publish(it) }
                 }
-                return result.success to result.output
+                return result.success
             }
+            override fun process(chunks: List<String>) { chunks.forEach { progress.appendOutput(it) } }
             override fun done() {
-                val (ok, out) = try { get() } catch (e: Exception) { false to (e.message ?: "") }
-                progress.finish(out, ok)
+                val ok = try { get() } catch (e: Exception) { false }
+                progress.finishStreaming(ok)
                 if (ok) {
                     commitMsgField.text                = ""
                     amendCheckBox.isSelected           = false

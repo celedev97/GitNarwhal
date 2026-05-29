@@ -217,14 +217,13 @@ class PullOverlay(private val git: Git) : JPanel(null) {
         dismiss()
         val progress = ProgressOverlay()
         progress.show(rp, "Pulling…")
-        object : SwingWorker<Pair<Boolean, String>, Void>() {
-            override fun doInBackground(): Pair<Boolean, String> {
-                val r = git.pull(remote, branch, rebase, noCommit, noFf, log)
-                return r.success to r.output
-            }
+        object : SwingWorker<Boolean, String>() {
+            override fun doInBackground(): Boolean =
+                git.pullStream(remote, branch, rebase, noCommit, noFf, log) { publish(it) }.success
+            override fun process(chunks: List<String>) { chunks.forEach { progress.appendOutput(it) } }
             override fun done() {
-                val (ok, out) = try { get() } catch (e: Exception) { false to (e.message ?: "") }
-                progress.finish(out, ok)
+                val ok = try { get() } catch (e: Exception) { false }
+                progress.finishStreaming(ok)
                 if (ok) onDone?.invoke()
             }
         }.execute()
