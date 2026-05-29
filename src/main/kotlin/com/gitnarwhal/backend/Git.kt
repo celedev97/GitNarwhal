@@ -47,6 +47,51 @@ class Git(val repo: String) {
         return Command(*realCommand, path = repo).execute()
     }
 
+    /** Like [git] but streams each output line to [onLine] as it arrives. */
+    private fun gitStream(vararg command: String, onLine: (String) -> Unit): Command {
+        val list = command.toMutableList().also { it.add(0, GIT) }
+        return Command(*list.toTypedArray(), path = repo).execute(onLine = onLine)
+    }
+
+    fun commitStream(message: String, onLine: (String) -> Unit) =
+        gitStream("commit", "-m", message, onLine = onLine)
+
+    fun commitAmendStream(message: String? = null, onLine: (String) -> Unit) =
+        if (message != null) gitStream("commit", "--amend", "-m", message, onLine = onLine)
+        else                 gitStream("commit", "--amend", "--no-edit",   onLine = onLine)
+
+    fun pullStream(
+        remote: String = "origin", branch: String? = null,
+        rebase: Boolean = false, noCommit: Boolean = false,
+        noFf: Boolean = false, log: Boolean = false,
+        onLine: (String) -> Unit
+    ): Command {
+        val parts = mutableListOf("pull")
+        if (rebase)   parts += "--rebase"
+        if (noCommit) parts += "--no-commit"
+        if (noFf)     parts += "--no-ff"
+        if (log)      parts += "--log"
+        parts += remote
+        if (branch != null) parts += branch
+        return gitStream(*parts.toTypedArray(), onLine = onLine)
+    }
+
+    fun pushRefspecStream(
+        remote: String, localBranch: String, remoteBranch: String,
+        force: Boolean = false, setUpstream: Boolean = false,
+        onLine: (String) -> Unit
+    ): Command {
+        val parts = mutableListOf("push")
+        if (setUpstream) parts += "--set-upstream"
+        if (force)       parts += "--force-with-lease"
+        parts += remote
+        parts += "$localBranch:$remoteBranch"
+        return gitStream(*parts.toTypedArray(), onLine = onLine)
+    }
+
+    fun pushTagsStream(remote: String = "origin", onLine: (String) -> Unit) =
+        gitStream("push", remote, "--tags", onLine = onLine)
+
     //region read
     fun currentBranch() = git("branch", "--show-current")
     fun revParse(ref: String) = git("rev-parse", ref)

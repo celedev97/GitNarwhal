@@ -234,26 +234,24 @@ class PushOverlay(private val git: Git, private val repoName: String) : JPanel(n
         dismiss()
         val progress = ProgressOverlay()
         progress.show(rp, "Pushing…")
-        object : SwingWorker<Pair<Boolean, String>, Void>() {
-            override fun doInBackground(): Pair<Boolean, String> {
-                val sb = StringBuilder()
+        object : SwingWorker<Boolean, String>() {
+            override fun doInBackground(): Boolean {
                 var ok = true
                 for (row in toPush) {
                     val target = row.remote.ifBlank { row.local }
-                    val r = git.pushRefspec(remote, row.local, target, force, row.track)
-                    if (r.output.isNotBlank()) sb.appendLine(r.output.trim())
+                    val r = git.pushRefspecStream(remote, row.local, target, force, row.track) { publish(it) }
                     if (!r.success) ok = false
                 }
                 if (ok && withTags) {
-                    val r = git.pushTags(remote)
-                    if (r.output.isNotBlank()) sb.appendLine(r.output.trim())
+                    val r = git.pushTagsStream(remote) { publish(it) }
                     if (!r.success) ok = false
                 }
-                return ok to sb.toString().trim()
+                return ok
             }
+            override fun process(chunks: List<String>) { chunks.forEach { progress.appendOutput(it) } }
             override fun done() {
-                val (ok, out) = try { get() } catch (e: Exception) { false to (e.message ?: "") }
-                progress.finish(out, ok)
+                val ok = try { get() } catch (e: Exception) { false }
+                progress.finishStreaming(ok)
                 if (ok) onDone?.invoke()
             }
         }.execute()

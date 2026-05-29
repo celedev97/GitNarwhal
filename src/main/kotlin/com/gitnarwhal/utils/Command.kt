@@ -44,23 +44,24 @@ class Command(vararg command: String, path: String = "./") {
     }
     //endregion
 
-    fun execute(path:String? = null): Command {
-        //path override for localized commands
+    fun execute(path: String? = null, onLine: ((String) -> Unit)? = null): Command {
         var realWorkingDirectory = workingDirFile
-        if(path != null){
-            realWorkingDirectory = Path.of(path).toAbsolutePath().toFile()
-        }
+        if (path != null) realWorkingDirectory = Path.of(path).toAbsolutePath().toFile()
 
-        //executing command
         val process = ProcessBuilder(commandParts).directory(realWorkingDirectory).redirectErrorStream(true).start()
 
-        //reading result streams
-        output = String(process.inputStream.readAllBytes()).trim()
+        if (onLine != null) {
+            val sb = StringBuilder()
+            process.inputStream.bufferedReader().forEachLine { line ->
+                sb.appendLine(line)
+                onLine(line)
+            }
+            output = sb.toString().trim()
+        } else {
+            output = String(process.inputStream.readAllBytes()).trim()
+        }
 
-        //waiting for process end
         process.waitFor()
-
-        //getting the exit code
         code = process.exitValue()
         success = code == 0
         return this
