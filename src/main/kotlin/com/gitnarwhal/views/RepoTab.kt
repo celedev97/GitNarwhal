@@ -19,6 +19,9 @@ import org.kordamp.ikonli.materialdesign.MaterialDesign
 import org.kordamp.ikonli.swing.FontIcon
 import java.awt.BorderLayout
 import java.awt.CardLayout
+import java.awt.Desktop
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.awt.Color
 import java.awt.Component
 import java.awt.Dimension
@@ -409,6 +412,32 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         // Right-click context menus
         unstagedList.componentPopupMenu = JPopupMenu().apply {
+            // ── File navigation ───────────────────────────────────────────────
+            add(JMenuItem("Open").apply {
+                addActionListener {
+                    val v = unstagedList.selectedValue ?: return@addActionListener
+                    val f = java.io.File(git.repo, v.substring(2))
+                    try { Desktop.getDesktop().open(f) } catch (_: Exception) {}
+                }
+            })
+            add(JMenuItem("Show in Explorer").apply {
+                addActionListener {
+                    val v = unstagedList.selectedValue ?: return@addActionListener
+                    val f = java.io.File(git.repo, v.substring(2))
+                    try { Desktop.getDesktop().open(f.parentFile ?: f) } catch (_: Exception) {}
+                }
+            })
+            add(JMenuItem("Copy Path to Clipboard").apply {
+                addActionListener {
+                    val v = unstagedList.selectedValue ?: return@addActionListener
+                    val fullPath = java.io.File(git.repo, v.substring(2)).absolutePath
+                    Toolkit.getDefaultToolkit().systemClipboard
+                        .setContents(StringSelection(fullPath), null)
+                }
+            })
+            addSeparator()
+
+            // ── Staging ───────────────────────────────────────────────────────
             add(JMenuItem("Stage selected").apply {
                 addActionListener {
                     unstagedList.selectedValuesList
@@ -423,13 +452,38 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     refreshFileStatus()
                 }
             })
+            add(JMenuItem("Discard changes").apply {
+                addActionListener {
+                    val files = unstagedList.selectedValuesList
+                    if (files.isEmpty()) return@addActionListener
+                    val names = files.joinToString("\n") { it.substring(2) }
+                    if (!confirm("Discard changes to:\n$names\n\nThis cannot be undone.")) return@addActionListener
+                    files.forEach { git.restore(it.substring(2)) }
+                    refreshFileStatus()
+                }
+            })
             addSeparator()
+
+            // ── Tracking ──────────────────────────────────────────────────────
+            add(JMenuItem("Stop Tracking (git rm --cached)").apply {
+                addActionListener {
+                    val v = unstagedList.selectedValue ?: return@addActionListener
+                    val file = v.substring(2)
+                    if (!confirm("Stop tracking '$file'?\n\nThe file will be kept locally but removed from git index.")) return@addActionListener
+                    val r = git.stopTracking(file)
+                    if (!r.success) showError("Stop tracking failed", r.output)
+                    refreshFileStatus()
+                }
+            })
             add(JMenuItem("Ignore…").apply {
                 addActionListener {
                     val v = unstagedList.selectedValue ?: return@addActionListener
                     showIgnoreDialog(v.substring(2))
                 }
             })
+            addSeparator()
+
+            // ── Inspection ────────────────────────────────────────────────────
             add(JMenuItem("Blame").apply {
                 addActionListener {
                     val v = unstagedList.selectedValue ?: return@addActionListener

@@ -211,8 +211,9 @@ class Git(val repo: String) {
     //region staging
     fun add(fileName: String)     = git("add", "--", fileName)
     fun addAll()                  = git("add", "-A")
-    fun restore(fileName: String) = git("restore", "--", fileName)
-    fun unstage(fileName: String) = git("restore", "--staged", "--", fileName)
+    fun restore(fileName: String)      = git("restore", "--", fileName)
+    fun unstage(fileName: String)      = git("restore", "--staged", "--", fileName)
+    fun stopTracking(fileName: String) = git("rm", "--cached", "--", fileName)
     fun unstageAll()              = git("restore", "--staged", ".")
 
     /** Apply a unified diff patch. Pass [cached]=true to stage, [reverse]=true to undo. */
