@@ -1798,22 +1798,35 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 is SubmoduleInfo -> {
                     text        = obj.name
                     toolTipText = obj.path
-                    icon = when {
-                        obj.isDirty         -> FontIcon.of(MaterialDesign.MDI_ALERT,         14, alertColor)
-                        obj.isUninitialized -> FontIcon.of(MaterialDesign.MDI_FOLDER_REMOVE, 14, mutedColor)
-                        else                -> FontIcon.of(MaterialDesign.MDI_FOLDER,        14, foreground)
+                    when {
+                        obj.isDirty -> {
+                            icon       = FontIcon.of(MaterialDesign.MDI_ALERT, 14, alertColor)
+                            foreground = alertColor
+                            font       = font.deriveFont(Font.BOLD)
+                        }
+                        obj.isUninitialized -> {
+                            icon       = FontIcon.of(MaterialDesign.MDI_FOLDER_REMOVE, 14, mutedColor)
+                            foreground = mutedColor
+                            font       = font.deriveFont(Font.ITALIC)
+                        }
+                        else -> {
+                            icon       = FontIcon.of(MaterialDesign.MDI_FOLDER, 14, mutedColor)
+                            foreground = mutedColor
+                        }
                     }
-                    if (obj.isUninitialized) foreground = mutedColor
                 }
                 is String -> {
                     text        = obj
                     toolTipText = null
-                    // Folder node: amber if any child is dirty
                     val hasDirtyChild = node.breadthFirstEnumeration().asSequence()
                         .mapNotNull { (it as? DefaultMutableTreeNode)?.userObject as? SubmoduleInfo }
                         .any { it.isDirty }
-                    icon = FontIcon.of(MaterialDesign.MDI_FOLDER, 14,
+                    icon       = FontIcon.of(MaterialDesign.MDI_FOLDER, 14,
                         if (hasDirtyChild) alertColor else foreground)
+                    if (hasDirtyChild) {
+                        foreground = alertColor
+                        font       = font.deriveFont(Font.BOLD)
+                    }
                 }
             }
             return this
