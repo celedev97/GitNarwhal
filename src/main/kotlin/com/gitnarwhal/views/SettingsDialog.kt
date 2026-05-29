@@ -48,6 +48,7 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
     private val terminalPresetCombo = JComboBox<String>(terminalOptions.map { it.first }.toTypedArray())
     private val terminalField       = JTextField()
     private lateinit var terminalCustomRow: JPanel
+    private val ideField            = JTextField()
 
     // ── Updates ───────────────────────────────────────────────────────────────
     private val autoUpdateCk = JCheckBox("Automatically notify me of available updates")
@@ -142,6 +143,9 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
                     terminalCustomRow.parent?.repaint()
                 }
                 terminalCustomRow
+            },
+            formRow("IDE command:", ideField).also {
+                ideField.toolTipText = "Command to open the repo in an IDE. Use \$REPO as placeholder. Leave blank to auto-detect VS Code."
             }
         ))
         p.add(Box.createVerticalGlue())
@@ -310,6 +314,7 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
         terminalPresetCombo.selectedIndex = presetIdx
         terminalField.text        = Settings.terminalCommand
         terminalCustomRow.isVisible = terminalOptions.getOrNull(presetIdx)?.second == "custom"
+        ideField.text             = Settings.ideCommand
 
         autoUpdateCk.isSelected = Settings.autoUpdate
 
@@ -371,6 +376,7 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
         Settings.defaultCloneFolder = cloneFolderField.text.trim()
         Settings.terminalPreset     = terminalOptions.getOrNull(terminalPresetCombo.selectedIndex)?.second ?: "auto"
         Settings.terminalCommand    = terminalField.text.trim()
+        Settings.ideCommand         = ideField.text.trim()
 
         Settings.autoUpdate = autoUpdateCk.isSelected
 

@@ -30,6 +30,7 @@ object Settings : JSONObject(settingsJSON) {
     var defaultCloneFolder  by JSONSetting("")
     var terminalPreset      by JSONSetting("auto")
     var terminalCommand     by JSONSetting("")
+    var ideCommand          by JSONSetting("")
 
     // Diff
     var diffFontFamily      by JSONSetting("Monospaced")
