@@ -1657,7 +1657,15 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     fun showFileStatusView() = showFileStatus()
     fun openSettings()       { RepoSettingsDialog(git, SwingUtilities.getWindowAncestor(this)).isVisible = true }
 
-    fun openTerminal() = Thread { OS.TERMINAL.execute(path) }.start()
+    fun openTerminal() = Thread {
+        val custom = Settings.terminalCommand.trim()
+        if (custom.isNotBlank()) {
+            val expanded = custom.replace("\$REPO", path)
+            Command(expanded).execute(path)
+        } else {
+            OS.TERMINAL.execute(path)
+        }
+    }.start()
     fun openExplorer() = Thread { (OS.EXPLORER + path).execute() }.start()
     fun openRemote()   = Thread { (OS.BROWSER  + git.remoteUrl().output).execute() }.start()
 
