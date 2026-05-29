@@ -348,7 +348,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         unstagedList.addListSelectionListener { e ->
             if (!e.valueIsAdjusting && unstagedList.selectedValue != null) {
                 stagedList.clearSelection()
-                showFileDiff(unstagedList.selectedValue.substring(2), staged = false)
+                val entry = unstagedList.selectedValue
+                showFileDiff(entry.substring(2), staged = false, isUntracked = entry.startsWith("?"))
             }
         }
 
@@ -629,16 +630,19 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
     }
 
-    private fun showFileDiff(file: String, staged: Boolean) {
+    private fun showFileDiff(file: String, staged: Boolean, isUntracked: Boolean = false) {
         currentDiffFile   = file
         currentDiffStaged = staged
         showingBlame      = false
-        blameBtn.text     = "Blame"
-        blameBtn.isVisible = true
+        blameBtn.text      = "Blame"
+        blameBtn.isVisible = !isUntracked
         diffFileNameLabel.text = file
         object : SwingWorker<String, Void>() {
-            override fun doInBackground(): String =
-                (if (staged) git.diffStaged(file) else git.diff(file)).output
+            override fun doInBackground(): String = when {
+                staged      -> git.diffStaged(file).output
+                isUntracked -> git.diffUntracked(file).output   // exit 1 is normal; always use .output
+                else        -> git.diff(file).output
+            }
             override fun done() {
                 val diffText = try { get() } catch (e: Exception) { return }
                 diffScrollPane.setViewportView(buildDiffView(diffText, staged, file))

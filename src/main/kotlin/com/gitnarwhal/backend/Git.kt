@@ -110,6 +110,16 @@ class Git(val repo: String) {
         if (path != null) { args += "--"; args += path }
         return git(*args.toTypedArray())
     }
+
+    /** Show an untracked file as a full-addition diff (git diff --no-index -- /dev/null <file>).
+     *  Exit code 1 is normal when differences exist; always use .output. */
+    fun diffUntracked(path: String): Command {
+        val args = mutableListOf("--no-pager", "diff", "--no-index", "--")
+        if (Settings.diffIgnoreWhitespace) args += "-w"
+        args += "/dev/null"
+        args += path
+        return git(*args.toTypedArray())
+    }
     fun remoteUrl(remote: String = "origin") = git("config", "--get", "remote.$remote.url")
     fun remoteList()                         = git("remote")
     fun remoteAdd(name: String, url: String) = git("remote", "add", name, url)
