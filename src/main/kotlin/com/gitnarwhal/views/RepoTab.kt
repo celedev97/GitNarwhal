@@ -1041,10 +1041,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val menu = JPopupMenu()
         menu.add(menuItem("Checkout") { checkoutBranch(branchFullName) })
         if (isLocal && isHeadDetached) {
-            menu.add(menuItem("Move branch to HEAD") {
-                if (confirm("Move '$branchFullName' to current HEAD?\n\ngit branch -f $branchFullName HEAD")) {
+            menu.add(menuItem("Link Branch to HEAD") {
+                if (confirm("Link '$branchFullName' to current HEAD?\n\ngit branch -f $branchFullName HEAD")) {
                     val r = git.moveBranchToRef(branchFullName, "HEAD")
-                    if (!r.success) showError("Move branch failed", r.output) else refresh()
+                    if (!r.success) showError("Link branch failed", r.output)
+                    else { git.selectBranch(branchFullName); refresh() }
                 }
             })
         }
