@@ -1,3 +1,10 @@
+# Regole generali
+
+**Non firmare MAI come co-autore nei commit.** Non aggiungere righe
+`Co-Authored-By: Claude ...` né in commit messages né altrove.
+
+---
+
 # Local workflow
 
 Per ogni task su questo repo, a meno che non venga specificato diversamente:

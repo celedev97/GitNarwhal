@@ -1066,7 +1066,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             val newName = JOptionPane.showInputDialog(this, "New name:", branchFullName)
                 ?.takeIf { it.isNotBlank() } ?: return@menuItem
             val r = git.renameBranch(branchFullName, newName)
-            if (!r.success) showError("Rename failed", r.output); refreshBranches()
+            if (!r.success) showError("Rename failed", r.output); refresh()
         })
         menu.add(menuItem("Delete") {
             if (confirm("Delete branch '$branchFullName'? (refuses if not merged)")) {
@@ -1077,7 +1077,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                         if (!rf.success) showError("Force delete failed", rf.output)
                     }
                 }
-                refreshBranches()
+                refresh()
             }
         })
         return menu
