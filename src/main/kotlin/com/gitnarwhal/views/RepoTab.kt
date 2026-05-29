@@ -552,41 +552,48 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             override fun doInBackground() = git.status().output
             override fun done() {
                 val out = try { get() } catch (e: Exception) { return }
-                stagedModel.clear(); unstagedModel.clear()
-                val conflictCodes = setOf("UU","AA","DD","AU","UA","DU","UD")
-                val conflictFiles = mutableListOf<String>()
-                for (line in out.lines()) {
-                    if (line.length < 3 || line.startsWith("##")) continue
-                    val x    = line[0]; val y = line[1]; val file = line.substring(3)
-                    if (matchesIgnorePattern(file)) continue
-                    val code = "$x$y"
-                    if (code in conflictCodes) {
-                        conflictFiles.add(file)
-                        unstagedModel.addElement("! $file")
-                    } else {
-                        if (x != ' ' && x != '?') stagedModel.addElement("$x $file")
-                        if (y == 'M' || y == 'D' || y == '?') unstagedModel.addElement("$y $file")
-                    }
-                }
-                stagedHeaderLabel.text   = "Staged files (${stagedModel.size()} files)"
-                unstagedHeaderLabel.text = "Unstaged files (${unstagedModel.size()} files)"
-                // Update conflict banner
-                if (conflictFiles.isNotEmpty()) {
-                    val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
-                                   java.io.File(git.repo, ".git/rebase-apply").exists()
-                    val op = if (isRebase) "Rebase" else "Merge"
-                    conflictBannerLabel.text = "⚠  $op in progress — ${conflictFiles.size} conflict(s)"
-                    conflictContinueBtn.text = if (isRebase) "Continue Rebase" else "Commit Merge"
-                    conflictBanner.isVisible = true
-                    if (commitMsgField.text.isBlank()) {
-                        val mergeMsg = java.io.File(git.repo, ".git/MERGE_MSG")
-                        if (mergeMsg.exists()) commitMsgField.text = mergeMsg.readText()
-                    }
-                } else {
-                    conflictBanner.isVisible = false
-                }
+                applyFileStatus(out)
             }
         }.execute()
+    }
+
+    private fun applyFileStatus(out: String) {
+        stagedModel.clear(); unstagedModel.clear()
+        diffScrollPane.setViewportView(null)
+        diffFileNameLabel.text = " "
+        currentDiffFile = ""
+        val conflictCodes = setOf("UU","AA","DD","AU","UA","DU","UD")
+        val conflictFiles = mutableListOf<String>()
+        for (line in out.lines()) {
+            if (line.length < 3 || line.startsWith("##")) continue
+            val x    = line[0]; val y = line[1]; val file = line.substring(3)
+            if (matchesIgnorePattern(file)) continue
+            val code = "$x$y"
+            if (code in conflictCodes) {
+                conflictFiles.add(file)
+                unstagedModel.addElement("! $file")
+            } else {
+                if (x != ' ' && x != '?') stagedModel.addElement("$x $file")
+                if (y == 'M' || y == 'D' || y == '?') unstagedModel.addElement("$y $file")
+            }
+        }
+        stagedHeaderLabel.text   = "Staged files (${stagedModel.size()} files)"
+        unstagedHeaderLabel.text = "Unstaged files (${unstagedModel.size()} files)"
+        // Update conflict banner
+        if (conflictFiles.isNotEmpty()) {
+            val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
+                           java.io.File(git.repo, ".git/rebase-apply").exists()
+            val op = if (isRebase) "Rebase" else "Merge"
+            conflictBannerLabel.text = "⚠  $op in progress — ${conflictFiles.size} conflict(s)"
+            conflictContinueBtn.text = if (isRebase) "Continue Rebase" else "Commit Merge"
+            conflictBanner.isVisible = true
+            if (commitMsgField.text.isBlank()) {
+                val mergeMsg = java.io.File(git.repo, ".git/MERGE_MSG")
+                if (mergeMsg.exists()) commitMsgField.text = mergeMsg.readText()
+            }
+        } else {
+            conflictBanner.isVisible = false
+        }
     }
 
     // ── Diff display ──────────────────────────────────────────────────────────
@@ -1327,6 +1334,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val branchesOut: String, val branchOk: Boolean,
         val logOut: String,      val logOk: Boolean,
         val stashOut: String,
+        val statusOut: String,
         val modifiedCount: Int,
         val unpulledCount: Int,
         val unpushedCount: Int
@@ -1345,6 +1353,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 return RefreshSnapshot(
                     b.output, b.success, l.output, l.success,
                     if (s.success) s.output else "",
+                    st.output,
                     modified, unpulled, unpushed
                 )
             }
@@ -1353,6 +1362,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 if (snap.branchOk) applyBranches(snap.branchesOut)
                 if (snap.logOk)    applyCommits(snap.logOut, snap.modifiedCount > 0)
                 applyStashes(snap.stashOut)
+                applyFileStatus(snap.statusOut)
                 commitBtn.badge = snap.modifiedCount
                 pullBtn.badge   = snap.unpulledCount
                 pushBtn.badge   = snap.unpushedCount
