@@ -560,10 +560,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     private fun applyFileStatus(out: String) {
+        val prevFile   = currentDiffFile
+        val prevStaged = currentDiffStaged
+
         stagedModel.clear(); unstagedModel.clear()
-        diffScrollPane.setViewportView(null)
-        diffFileNameLabel.text = " "
-        currentDiffFile = ""
         val conflictCodes = setOf("UU","AA","DD","AU","UA","DU","UD")
         val conflictFiles = mutableListOf<String>()
         for (line in out.lines()) {
@@ -581,6 +581,22 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
         stagedHeaderLabel.text   = "Staged files (${stagedModel.size()} files)"
         unstagedHeaderLabel.text = "Unstaged files (${unstagedModel.size()} files)"
+
+        // Restore previous selection if the file is still in any list; otherwise clear diff
+        if (prevFile.isNotBlank()) {
+            val sIdx = (0 until stagedModel.size())  .firstOrNull { stagedModel[it].substring(2)   == prevFile }
+            val uIdx = (0 until unstagedModel.size()).firstOrNull { unstagedModel[it].substring(2) == prevFile }
+            when {
+                prevStaged  && sIdx != null -> stagedList.selectedIndex   = sIdx
+                !prevStaged && uIdx != null -> unstagedList.selectedIndex = uIdx
+                sIdx != null                -> stagedList.selectedIndex   = sIdx
+                uIdx != null                -> unstagedList.selectedIndex = uIdx
+                else -> { diffScrollPane.setViewportView(null); diffFileNameLabel.text = " "; currentDiffFile = "" }
+            }
+        } else {
+            diffScrollPane.setViewportView(null); diffFileNameLabel.text = " "; currentDiffFile = ""
+        }
+
         // Update conflict banner
         if (conflictFiles.isNotEmpty()) {
             val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
