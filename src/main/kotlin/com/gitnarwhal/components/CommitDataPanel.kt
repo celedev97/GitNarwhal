@@ -8,6 +8,8 @@ import java.awt.Color
 import java.awt.Cursor
 import java.awt.FlowLayout
 import java.awt.Font
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.text.SimpleDateFormat
@@ -23,6 +25,8 @@ import javax.swing.text.StyleConstants
 import javax.swing.text.StyledDocument
 
 class CommitDataPanel(private val repo: RepoTab) : JPanel(BorderLayout()) {
+
+    private var currentCommit: Commit? = null
 
     private val badgePanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 4)).apply {
         isOpaque = false
@@ -54,9 +58,36 @@ class CommitDataPanel(private val repo: RepoTab) : JPanel(BorderLayout()) {
                 repo.selectCommit(href)
             }
         })
+
+        // Right-click context menu for quick copy
+        textPane.componentPopupMenu = JPopupMenu().apply {
+            add(JMenuItem("Copy Commit Hash").apply {
+                addActionListener {
+                    currentCommit?.hash?.let { copy(it) }
+                }
+            })
+            add(JMenuItem("Copy Short Hash").apply {
+                addActionListener {
+                    currentCommit?.shortHash?.let { copy(it) }
+                }
+            })
+            add(JMenuItem("Copy Author").apply {
+                addActionListener {
+                    currentCommit?.author?.let { copy(it) }
+                }
+            })
+            addSeparator()
+            add(JMenuItem("Copy").apply {
+                addActionListener { textPane.copy() }
+            })
+        }
     }
 
+    private fun copy(text: String) =
+        Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
+
     fun showCommit(commit: Commit) {
+        currentCommit = commit
         // ── Ref badges ────────────────────────────────────────────────────────
         badgePanel.removeAll()
         val headRef     = commit.refs.firstOrNull { it.type == RefType.HEAD }

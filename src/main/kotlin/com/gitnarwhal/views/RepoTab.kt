@@ -90,7 +90,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     // ── Branch tree ───────────────────────────────────────────────────────────
     private data class BranchInfo(
         val fullName: String, val leafName: String,
-        val isActive: Boolean, val tracking: String? = null
+        val isActive: Boolean, val tracking: String? = null,
+        val ahead: Int = 0, val behind: Int = 0
     )
 
     private val branchRoot         = DefaultMutableTreeNode("root")
@@ -146,6 +147,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     // ── Commit search ─────────────────────────────────────────────────────────
     private val searchField = JTextField().apply {
         putClientProperty("JTextField.placeholderText", "Search commits…")
+    }
+    private val searchFilterCombo = JComboBox(arrayOf("All", "Message", "Author", "Hash")).apply {
+        toolTipText = "Search field to filter on"
     }
 
     // ── Blame button (in diff top bar) ────────────────────────────────────────
@@ -208,8 +212,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             override fun removeUpdate(e: javax.swing.event.DocumentEvent) = filterCommits(searchField.text)
             override fun changedUpdate(e: javax.swing.event.DocumentEvent) {}
         })
+        searchFilterCombo.addActionListener { filterCommits(searchField.text) }
+        val searchBar = JPanel(BorderLayout(4, 0)).apply {
+            isOpaque = false
+            add(searchFilterCombo, BorderLayout.WEST)
+            add(searchField,       BorderLayout.CENTER)
+        }
         val tableWithSearch = JPanel(BorderLayout()).apply {
-            add(searchField,     BorderLayout.NORTH)
+            add(searchBar,        BorderLayout.NORTH)
             add(commitScrollPane, BorderLayout.CENTER)
         }
         val historyView = JSplitPane(
@@ -252,6 +262,22 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     }
                 }
             }
+        }
+
+        // Stash selection → preview diff in commit detail panel
+        stashList.addListSelectionListener { e ->
+            if (e.valueIsAdjusting) return@addListSelectionListener
+            val idx = stashList.selectedIndex.takeIf { it >= 0 } ?: return@addListSelectionListener
+            mainCards.show(mainContainer, CARD_HISTORY)
+            mainContainer.revalidate(); mainContainer.repaint()
+            object : SwingWorker<String, Void>() {
+                override fun doInBackground() = git.stashDiff(idx).output
+                override fun done() {
+                    val diff = try { get() } catch (_: Exception) { return }
+                    commitDiffScroll.setViewportView(buildDiffView(diff, false, "stash@{$idx}"))
+                    commitDiffScroll.revalidate()
+                }
+            }.execute()
         }
 
         installCommitContextMenu()
@@ -303,6 +329,22 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 val commit = currentCommit            ?: return@addListSelectionListener
                 showCommitFileDiff(commit, line)
             }
+        }
+        commitFileList.componentPopupMenu = JPopupMenu().apply {
+            add(JMenuItem("File History").apply {
+                addActionListener {
+                    val line = commitFileList.selectedValue ?: return@addActionListener
+                    showFileHistory(line.substring(2).trim())
+                }
+            })
+            add(JMenuItem("Copy Path to Clipboard").apply {
+                addActionListener {
+                    val line = commitFileList.selectedValue ?: return@addActionListener
+                    val fullPath = java.io.File(git.repo, line.substring(2).trim()).absolutePath
+                    Toolkit.getDefaultToolkit().systemClipboard
+                        .setContents(StringSelection(fullPath), null)
+                }
+            })
         }
         panel.add(JScrollPane(commitFileList), BorderLayout.CENTER)
         return panel
@@ -457,6 +499,36 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     refreshFileStatus()
                 }
             })
+            // Accept ours/theirs — only shown for conflicted files (UU/AA/DD prefix)
+            addPopupMenuListener(object : javax.swing.event.PopupMenuListener {
+                private var conflictItems = listOf<JMenuItem>()
+                override fun popupMenuWillBecomeVisible(e: javax.swing.event.PopupMenuEvent) {
+                    conflictItems.forEach { it.isVisible = false }
+                    val v = unstagedList.selectedValue ?: return
+                    val isConflict = v.length >= 2 && v[0] in "UAD" && v[1] in "UAD"
+                    conflictItems.forEach { it.isVisible = isConflict }
+                }
+                override fun popupMenuWillBecomeInvisible(e: javax.swing.event.PopupMenuEvent) {}
+                override fun popupMenuCanceled(e: javax.swing.event.PopupMenuEvent) {}
+            })
+            val acceptOursItem = JMenuItem("Accept Ours (keep local)").apply {
+                addActionListener {
+                    val v = unstagedList.selectedValue ?: return@addActionListener
+                    val file = v.substring(2)
+                    git.checkoutOurs(file); git.add(file); refreshFileStatus()
+                }
+            }
+            val acceptTheirsItem = JMenuItem("Accept Theirs (keep incoming)").apply {
+                addActionListener {
+                    val v = unstagedList.selectedValue ?: return@addActionListener
+                    val file = v.substring(2)
+                    git.checkoutTheirs(file); git.add(file); refreshFileStatus()
+                }
+            }
+            add(acceptOursItem)
+            add(acceptTheirsItem)
+            addSeparator()
+
             add(JMenuItem("Discard changes").apply {
                 addActionListener {
                     val files = unstagedList.selectedValuesList
@@ -489,6 +561,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             addSeparator()
 
             // ── Inspection ────────────────────────────────────────────────────
+            add(JMenuItem("File History").apply {
+                addActionListener {
+                    val v = unstagedList.selectedValue ?: return@addActionListener
+                    showFileHistory(v.substring(2))
+                }
+            })
             add(JMenuItem("Blame").apply {
                 addActionListener {
                     val v = unstagedList.selectedValue ?: return@addActionListener
@@ -499,10 +577,47 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             })
         }
         stagedList.componentPopupMenu = JPopupMenu().apply {
+            add(JMenuItem("Open").apply {
+                addActionListener {
+                    val v = stagedList.selectedValue ?: return@addActionListener
+                    val f = java.io.File(git.repo, v.substring(2))
+                    try { Desktop.getDesktop().open(f) } catch (_: Exception) {}
+                }
+            })
+            add(JMenuItem("Show in Explorer").apply {
+                addActionListener {
+                    val v = stagedList.selectedValue ?: return@addActionListener
+                    val f = java.io.File(git.repo, v.substring(2))
+                    try { Desktop.getDesktop().open(f.parentFile ?: f) } catch (_: Exception) {}
+                }
+            })
+            add(JMenuItem("Copy Path to Clipboard").apply {
+                addActionListener {
+                    val v = stagedList.selectedValue ?: return@addActionListener
+                    val fullPath = java.io.File(git.repo, v.substring(2)).absolutePath
+                    Toolkit.getDefaultToolkit().systemClipboard
+                        .setContents(StringSelection(fullPath), null)
+                }
+            })
+            addSeparator()
             add(JMenuItem("Unstage selected").apply {
                 addActionListener {
                     stagedList.selectedValuesList.forEach { git.unstage(it.substring(2)) }
                     refreshFileStatus()
+                }
+            })
+            addSeparator()
+            add(JMenuItem("File History").apply {
+                addActionListener {
+                    val v = stagedList.selectedValue ?: return@addActionListener
+                    showFileHistory(v.substring(2))
+                }
+            })
+            add(JMenuItem("Blame").apply {
+                addActionListener {
+                    val v = stagedList.selectedValue ?: return@addActionListener
+                    blameBtn.isVisible = true
+                    showBlame(v.substring(2), null)
                 }
             })
         }
@@ -1061,7 +1176,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             val node = value as? DefaultMutableTreeNode ?: return this
             when (val obj = node.userObject) {
                 is BranchInfo -> {
-                    text = obj.leafName
+                    val aheadBehind = buildString {
+                        if (obj.ahead  > 0) append(" ↑${obj.ahead}")
+                        if (obj.behind > 0) append(" ↓${obj.behind}")
+                    }
+                    text = obj.leafName + aheadBehind
                     font = font.deriveFont(if (obj.isActive) Font.BOLD else Font.PLAIN)
                 }
                 is String -> {
@@ -1224,7 +1343,32 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         bar.add(commitBtn)
         bar.add(pullBtn)
         bar.add(pushBtn)
-        bar.add(iconBtn(MaterialDesign.MDI_CLOUD_DOWNLOAD, "Fetch")   { fetch() })
+        bar.add(iconBtn(MaterialDesign.MDI_CLOUD_DOWNLOAD, "Fetch") { fetch() }.also { btn ->
+            btn.componentPopupMenu = JPopupMenu().apply {
+                add(JMenuItem("Fetch All Remotes").apply { addActionListener { fetch() } })
+                addSeparator()
+                // Remote-specific entries populated on first show
+                addPopupMenuListener(object : javax.swing.event.PopupMenuListener {
+                    override fun popupMenuWillBecomeVisible(e: javax.swing.event.PopupMenuEvent) {
+                        // Remove old per-remote items (keep first 2: "Fetch All" + separator)
+                        while (componentCount > 2) remove(2)
+                        git.remoteNames().forEach { remote ->
+                            add(JMenuItem("Fetch $remote").apply {
+                                addActionListener { runWithProgress("Fetching $remote…") { git.fetchRemote(remote) } }
+                            })
+                        }
+                    }
+                    override fun popupMenuWillBecomeInvisible(e: javax.swing.event.PopupMenuEvent) {}
+                    override fun popupMenuCanceled(e: javax.swing.event.PopupMenuEvent) {}
+                })
+            }
+            btn.addMouseListener(object : java.awt.event.MouseAdapter() {
+                override fun mousePressed(e: java.awt.event.MouseEvent) {
+                    if (e.isPopupTrigger || javax.swing.SwingUtilities.isRightMouseButton(e))
+                        btn.componentPopupMenu.show(btn, e.x, e.y)
+                }
+            })
+        })
         bar.addSeparator()
         bar.add(iconBtn(MaterialDesign.MDI_SOURCE_BRANCH,  "Branch")  { newBranch() })
         bar.add(iconBtn(MaterialDesign.MDI_SOURCE_MERGE,    "Merge")   { mergeBranch() })
@@ -1534,20 +1678,21 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             val fullName = parts[0]
             if (cleaned.contains(" -> ")) continue
             if (fullName.startsWith("remotes/")) {
-                insertBranch(remoteBranchesNode, fullName.removePrefix("remotes/"), false, null)
+                insertBranch(remoteBranchesNode, fullName.removePrefix("remotes/"), false, null, 0, 0)
             } else {
-                val tracking = if (parts.size > 2)
-                    "^\\[([^\\]:]+)".toRegex().find(parts.drop(2).joinToString(" "))
-                        ?.groups?.get(1)?.value
-                else null
-                insertBranch(localBranchesNode, fullName, isActive, tracking)
+                val rest     = if (parts.size > 2) parts.drop(2).joinToString(" ") else ""
+                val tracking = "^\\[([^\\]:]+)".toRegex().find(rest)?.groups?.get(1)?.value
+                val ahead    = "ahead (\\d+)".toRegex().find(rest)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                val behind   = "behind (\\d+)".toRegex().find(rest)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                insertBranch(localBranchesNode, fullName, isActive, tracking, ahead, behind)
             }
         }
         branchTreeModel.reload()
         for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
     }
 
-    private fun insertBranch(parent: DefaultMutableTreeNode, path: String, active: Boolean, tracking: String?) {
+    private fun insertBranch(parent: DefaultMutableTreeNode, path: String, active: Boolean,
+                             tracking: String?, ahead: Int = 0, behind: Int = 0) {
         val segs    = path.split("/")
         var current = parent
         for (i in 0 until segs.size - 1) {
@@ -1557,7 +1702,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 .firstOrNull { it.userObject == seg }
                 ?: DefaultMutableTreeNode(seg).also { current.add(it) }
         }
-        current.add(DefaultMutableTreeNode(BranchInfo(path, segs.last(), active, tracking)))
+        current.add(DefaultMutableTreeNode(BranchInfo(path, segs.last(), active, tracking, ahead, behind)))
     }
 
     private fun applyCommits(logOutput: String, hasUncommitted: Boolean = false) {
@@ -1792,6 +1937,20 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     fun showFileStatusView() = showFileStatus()
     fun openSettings()       { RepoSettingsDialog(git, SwingUtilities.getWindowAncestor(this)).isVisible = true }
 
+    private fun showFileHistory(filePath: String) {
+        mainCards.show(mainContainer, CARD_HISTORY)
+        mainContainer.revalidate(); mainContainer.repaint()
+        object : SwingWorker<String, Void>() {
+            override fun doInBackground() = git.logFile(filePath).output
+            override fun done() {
+                val logOut = try { get() } catch (_: Exception) { return }
+                if (logOut.isBlank()) { showError("File History", "No history found for: $filePath"); return }
+                applyCommits(logOut, false)
+                searchField.text = ""
+            }
+        }.execute()
+    }
+
     private fun pushToTrackingBranch() {
         val remote = trackingRemote ?: return push()   // fallback to full dialog if no upstream
         val branch = trackingBranchRef ?: return push()
@@ -1895,16 +2054,22 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     private fun filterCommits(query: String) {
         val q = query.trim().lowercase()
+        val field = searchFilterCombo.selectedItem as? String ?: "All"
         filteredCommits.clear()
         filteredCommits.addAll(
             if (q.isEmpty()) commitList
             else commitList.filter { c ->
                 runCatching {
-                    c.title.lowercase().contains(q) ||
-                    c.author.lowercase().contains(q) ||
-                    c.committer.lowercase().contains(q) ||
-                    c.hash.startsWith(q, ignoreCase = true) ||
-                    c.shortHash.startsWith(q, ignoreCase = true)
+                    when (field) {
+                        "Message" -> c.title.lowercase().contains(q)
+                        "Author"  -> c.author.lowercase().contains(q) || c.committer.lowercase().contains(q)
+                        "Hash"    -> c.hash.startsWith(q, ignoreCase = true) || c.shortHash.startsWith(q, ignoreCase = true)
+                        else      -> c.title.lowercase().contains(q) ||
+                                     c.author.lowercase().contains(q) ||
+                                     c.committer.lowercase().contains(q) ||
+                                     c.hash.startsWith(q, ignoreCase = true) ||
+                                     c.shortHash.startsWith(q, ignoreCase = true)
+                    }
                 }.getOrDefault(false)
             }
         )

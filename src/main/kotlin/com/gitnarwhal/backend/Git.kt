@@ -145,6 +145,11 @@ class Git(val repo: String) {
         "--no-pager", "log", "--all", "--date=unix",
         "--pretty=format:%x1E%H%x1F%P%x1F%h%x1F%aN <%aE>%x1F%ad%x1F%cN <%cE>%x1F%cd%x1F%s%x1F%D"
     )
+    fun logFile(path: String) = git(
+        "--no-pager", "log", "--all", "--follow", "--date=unix",
+        "--pretty=format:%x1E%H%x1F%P%x1F%h%x1F%aN <%aE>%x1F%ad%x1F%cN <%cE>%x1F%cd%x1F%s%x1F%D",
+        "--", path
+    )
     /** Files changed in a commit: output is "STATUS\tpath" lines (M/A/D/R/C…). */
     fun commitFiles(hash: String) = git("diff-tree", "--no-commit-id", "-r", "--name-status", hash)
     /** Diff of a single file as it appears in a commit. */
@@ -213,6 +218,8 @@ class Git(val repo: String) {
     fun addAll()                  = git("add", "-A")
     fun restore(fileName: String)      = git("restore", "--", fileName)
     fun unstage(fileName: String)      = git("restore", "--staged", "--", fileName)
+    fun checkoutOurs(fileName: String) = git("checkout", "--ours",   "--", fileName)
+    fun checkoutTheirs(fileName: String) = git("checkout", "--theirs", "--", fileName)
     fun stopTracking(fileName: String) = git("rm", "--cached", "--", fileName)
     fun unstageAll()              = git("restore", "--staged", ".")
 
@@ -296,6 +303,7 @@ class Git(val repo: String) {
     fun stashPop(index: Int = 0)          = git("stash", "pop", "stash@{$index}")
     fun stashDrop(index: Int = 0)         = git("stash", "drop", "stash@{$index}")
     fun stashApply(index: Int = 0)        = git("stash", "apply", "stash@{$index}")
+    fun stashDiff(index: Int = 0)         = git("--no-pager", "stash", "show", "-p", "stash@{$index}")
 
     fun tagCreate(name: String, message: String? = null) =
         if (message != null) git("tag", "-a", name, "-m", message) else git("tag", name)
