@@ -3,6 +3,7 @@ package com.gitnarwhal.utils
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
+import java.nio.file.Path
 
 class ThemeServiceTest {
 
@@ -101,6 +102,37 @@ class ThemeServiceTest {
             assertDoesNotThrow { ThemeService.applyFromSettings() }
         } finally {
             Settings.theme = orig
+        }
+    }
+
+    @Test
+    fun `setAndApply with external absolute path covers FileInputStream branch`() {
+        val tmp = Files.createTempFile("test-theme-", ".theme.json").toFile()
+        val orig = Settings.theme
+        try {
+            tmp.writeText("""{"name":"Ext Test","dark":false}""")
+            assertDoesNotThrow { ThemeService.setAndApply(tmp.absolutePath) }
+        } finally {
+            Settings.theme = orig
+            Settings.save()
+            tmp.delete()
+        }
+    }
+
+    @Test
+    fun `listThemes includes external themes from user themes dir`() {
+        val dir = Path.of(System.getProperty("user.home"), ".gitnarwhal", "themes")
+        Files.createDirectories(dir)
+        val testTheme = dir.resolve("zzz-test-external.theme.json").toFile()
+        try {
+            testTheme.writeText("""{"name":"External Test","dark":false}""")
+            val themes = ThemeService.listThemes()
+            assertTrue(
+                themes.any { it.path == testTheme.absolutePath },
+                "listThemes should include external theme, got: ${themes.map { it.path }}"
+            )
+        } finally {
+            testTheme.delete()
         }
     }
 }

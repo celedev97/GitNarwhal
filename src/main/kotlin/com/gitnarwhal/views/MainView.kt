@@ -26,6 +26,7 @@ class MainView : JPanel(BorderLayout()) {
      * the listener again and spawn a second AddCloneTab.
      */
     @Volatile private var suppressTabChange = false
+    private var dragSourceIndex = -1
 
     init {
         add(tabPane, BorderLayout.CENTER)
@@ -58,6 +59,36 @@ class MainView : JPanel(BorderLayout()) {
         }
 
         tabPane.selectedIndex = 0
+
+        val tabMouseHandler = object : java.awt.event.MouseAdapter() {
+            override fun mouseClicked(e: java.awt.event.MouseEvent) {
+                if (e.button == java.awt.event.MouseEvent.BUTTON2) {
+                    val idx = tabPane.indexAtLocation(e.x, e.y)
+                    if (idx >= 0 && tabPane.getTitleAt(idx) != PLUS_TITLE)
+                        closeTab(tabPane.getComponentAt(idx) as JPanel)
+                }
+            }
+            override fun mousePressed(e: java.awt.event.MouseEvent) {
+                if (e.button == java.awt.event.MouseEvent.BUTTON1) {
+                    val idx = tabPane.indexAtLocation(e.x, e.y)
+                    dragSourceIndex = if (idx >= 0 && tabPane.getTitleAt(idx) != PLUS_TITLE) idx else -1
+                }
+            }
+            override fun mouseDragged(e: java.awt.event.MouseEvent) {
+                if (dragSourceIndex >= 0)
+                    tabPane.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.MOVE_CURSOR)
+            }
+            override fun mouseReleased(e: java.awt.event.MouseEvent) {
+                tabPane.cursor = java.awt.Cursor.getDefaultCursor()
+                val src = dragSourceIndex.also { dragSourceIndex = -1 }
+                if (src < 0) return
+                val dst = tabPane.indexAtLocation(e.x, e.y)
+                if (dst >= 0 && dst != src && tabPane.getTitleAt(dst) != PLUS_TITLE)
+                    moveTab(src, dst)
+            }
+        }
+        tabPane.addMouseListener(tabMouseHandler)
+        tabPane.addMouseMotionListener(tabMouseHandler)
 
         tabPane.addChangeListener {
             if (suppressTabChange) return@addChangeListener
@@ -146,6 +177,22 @@ class MainView : JPanel(BorderLayout()) {
             // If no real tabs remain, open a fresh Add/Clone tab
             val realCount = (0 until tabPane.tabCount).count { tabPane.getTitleAt(it) != PLUS_TITLE }
             if (realCount == 0) addNewCloneTab()
+        }
+    }
+
+    private fun moveTab(fromIndex: Int, toIndex: Int) {
+        val component = tabPane.getComponentAt(fromIndex)
+        val title = tabPane.getTitleAt(fromIndex)
+        val tabComponent = tabPane.getTabComponentAt(fromIndex)
+        val wasSelected = tabPane.selectedIndex == fromIndex
+        suppressTabChange = true
+        try {
+            tabPane.removeTabAt(fromIndex)
+            tabPane.insertTab(title, null, component, null, toIndex)
+            tabPane.setTabComponentAt(toIndex, tabComponent)
+            if (wasSelected) tabPane.selectedIndex = toIndex
+        } finally {
+            suppressTabChange = false
         }
     }
 

@@ -1,5 +1,6 @@
 package com.gitnarwhal.backend
 
+import com.gitnarwhal.utils.Settings
 import org.junit.jupiter.api.*
 import org.junit.jupiter.api.Assertions.*
 import java.io.File
@@ -742,5 +743,72 @@ class GitTest {
         val r = git.applyPatch(diff, cached = true, reverse = true)
         assertTrue(r.success, "applyPatchReverse should succeed: ${r.output}")
         git.restore("reverse-patch.txt")
+    }
+
+    @Test @Order(135)
+    fun `globalSet and globalGet round-trip via companion`() {
+        Git.globalSet("gitnarwhal.testset.xyz", "set-value")
+        val value = Git.globalGet("gitnarwhal.testset.xyz")
+        assertEquals("set-value", value)
+        Git.globalUnset("gitnarwhal.testset.xyz")
+    }
+
+    @Test @Order(136)
+    fun `Static clone copies a local repository`() {
+        val dest = Files.createTempDirectory("gitnarwhal-clone-test").toFile()
+        try {
+            val r = Git.Static.clone(repoDir.absolutePath, dest.absolutePath)
+            assertTrue(r.success, "clone should succeed: ${r.output}")
+            assertTrue(File(dest, ".git").exists(), ".git dir should exist in clone")
+        } finally {
+            dest.deleteRecursively()
+        }
+    }
+
+    @Test @Order(137)
+    fun `logFile returns history for a specific file`() {
+        val r = git.logFile("README.md")
+        assertTrue(r.success, "logFile should succeed: ${r.output}")
+        assertTrue(r.output.isNotBlank(), "logFile output should not be blank")
+    }
+
+    @Test @Order(138)
+    fun `stashDiff returns patch for a stash entry`() {
+        writeFile("stash-diff-file.txt", "stash diff content\n")
+        git.add("stash-diff-file.txt")
+        git.stashPush("stash for diff test")
+        val r = git.stashDiff(0)
+        assertTrue(r.output.isNotBlank(), "stashDiff should return a non-empty patch")
+        git.stashDrop(0)
+        deleteFile("stash-diff-file.txt")
+    }
+
+    @Test @Order(139)
+    fun `diff, diffStaged, diffUntracked with diffIgnoreWhitespace cover the -w branch`() {
+        val orig = Settings.diffIgnoreWhitespace
+        try {
+            Settings.diffIgnoreWhitespace = true
+            writeFile("ws-file.txt", "line one\n")
+            git.add("ws-file.txt")
+            git.commit("add ws-file")
+            writeFile("ws-file.txt", "line one  \n")
+            val r1 = git.diff("ws-file.txt")
+            assertNotNull(r1)
+            val r2 = git.diff()
+            assertNotNull(r2)
+            git.add("ws-file.txt")
+            val r3 = git.diffStaged("ws-file.txt")
+            assertNotNull(r3)
+            val r4 = git.diffStaged()
+            assertNotNull(r4)
+            git.unstageAll()
+            git.restore("ws-file.txt")
+            val absPath = writeFile("ws-untracked.txt", "untracked\n").absolutePath
+            val r5 = git.diffUntracked(absPath)
+            assertNotNull(r5)
+            deleteFile("ws-untracked.txt")
+        } finally {
+            Settings.diffIgnoreWhitespace = orig
+        }
     }
 }
