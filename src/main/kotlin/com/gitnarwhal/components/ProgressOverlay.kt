@@ -144,9 +144,9 @@ class ProgressOverlay : JPanel(null) {
     private fun repositionCard() {
         val w = width.coerceAtLeast(1)
         val h = height.coerceAtLeast(1)
-        val outputH = if (outputScroll.isVisible) 220 else 0
-        val cardW = 560.coerceAtMost(w - 80)
-        val cardH = (140 + outputH).coerceAtMost(h - 80)
+        val cardW = (w - 80).coerceAtLeast(400)
+        val cardH = if (outputScroll.isVisible) (h - 80).coerceAtLeast(200)
+                    else 140
         card.setBounds((w - cardW) / 2, (h - cardH) / 2, cardW, cardH)
         revalidate()
         repaint()
