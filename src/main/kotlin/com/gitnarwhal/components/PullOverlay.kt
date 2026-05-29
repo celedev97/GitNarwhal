@@ -119,7 +119,7 @@ class PullOverlay(private val git: Git) : JPanel(null) {
         val bottomRow = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 8)).apply {
             isOpaque = false
             border   = BorderFactory.createEmptyBorder(0, 12, 4, 12)
-            add(cancelBtn); add(pullBtn)
+            add(pullBtn); add(cancelBtn)
         }
 
         return JPanel(BorderLayout()).apply {
