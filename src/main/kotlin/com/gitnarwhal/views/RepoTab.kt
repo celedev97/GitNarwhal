@@ -12,6 +12,8 @@ import com.gitnarwhal.components.PullOverlay
 import com.gitnarwhal.components.PushOverlay
 import com.gitnarwhal.utils.Command
 import com.gitnarwhal.utils.OS
+import com.gitnarwhal.utils.Settings
+import org.json.JSONObject
 import org.kordamp.ikonli.Ikon
 import org.kordamp.ikonli.materialdesign.MaterialDesign
 import org.kordamp.ikonli.swing.FontIcon
@@ -26,6 +28,8 @@ import java.awt.Font
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.RenderingHints
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.*
@@ -60,15 +64,13 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     val commitTable: JTable = JTable(commitTableModel).apply {
-        autoResizeMode = JTable.AUTO_RESIZE_LAST_COLUMN
+        autoResizeMode = JTable.AUTO_RESIZE_OFF
         selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
         rowHeight = 22
-        columnModel.getColumn(0).apply { cellRenderer = CommitGraphCell();        preferredWidth = 100 }
-        columnModel.getColumn(1).apply { cellRenderer = CommitDescriptionCell();  preferredWidth = 400 }
-        columnModel.getColumn(2).preferredWidth = 140
-        columnModel.getColumn(3).preferredWidth = 160
-        columnModel.getColumn(4).preferredWidth = 80
+        columnModel.getColumn(0).cellRenderer = CommitGraphCell()
+        columnModel.getColumn(1).cellRenderer = CommitDescriptionCell()
     }
+    private val commitScrollPane = JScrollPane(commitTable)
 
     private val commitDataPanel = CommitDataPanel(this)
 
@@ -164,6 +166,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         branchTree = JTree(branchTreeModel).apply {
             isRootVisible    = false
             showsRootHandles = true
+            toggleClickCount = -1   // disable click-count toggle; expand/collapse only via arrow icon
             cellRenderer     = BranchCellRenderer()
             selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
             addMouseListener(buildBranchMouseAdapter())
@@ -196,8 +199,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             override fun changedUpdate(e: javax.swing.event.DocumentEvent) {}
         })
         val tableWithSearch = JPanel(BorderLayout()).apply {
-            add(searchField,            BorderLayout.NORTH)
-            add(JScrollPane(commitTable), BorderLayout.CENTER)
+            add(searchField,     BorderLayout.NORTH)
+            add(commitScrollPane, BorderLayout.CENTER)
         }
         val historyView = JSplitPane(
             JSplitPane.VERTICAL_SPLIT,
@@ -217,6 +220,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         add(buildToolbar(), BorderLayout.NORTH)
         add(sideBarSplit,   BorderLayout.CENTER)
+
+        loadColumnWidths()
+        commitScrollPane.viewport.addComponentListener(object : ComponentAdapter() {
+            override fun componentResized(e: ComponentEvent) = updateDescriptionColumnWidth()
+        })
+        commitTable.tableHeader.addMouseListener(object : MouseAdapter() {
+            override fun mouseReleased(e: MouseEvent) = saveColumnWidths()
+        })
 
         commitTable.selectionModel.addListSelectionListener { e ->
             if (!e.valueIsAdjusting) {
@@ -1415,7 +1426,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             // Pass 1: populate commit data; parent linking deferred to pass 2
             val commit = localMap.getOrPut(hash) { Commit(hash, this) }
             commit.prePopulate(listOf(f[2], f[3], f[4], f[5], f[6], f[7]))
-            commit.refs = if (f.size > 8) parseRefs(f[8]) else emptyList()
+            val decoration = if (f.size > 8) f[8] else ""
+            commit.refs = parseRefs(decoration)
+            commit.isCurrentHead = decoration.split(", ").any { p ->
+                val t = p.trim(); t.startsWith("HEAD -> ") || t == "HEAD"
+            }
             parentHashMap[hash] = f[1].split(" ").filter { it.isNotBlank() }
         }
         // Pass 2: link parents/children — ALL commits now in localMap, lookups succeed
@@ -1530,7 +1545,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         val maxLanes = (localList.maxOfOrNull { it.x } ?: 0) + 1
         val colW = (maxLanes * CommitGraphCell.LANE_W + CommitGraphCell.H_OFFSET * 2).coerceIn(60, 300)
-        commitTable.columnModel.getColumn(0).preferredWidth = colW
+        commitTable.columnModel.getColumn(0).apply { preferredWidth = colW; width = colW }
+        updateDescriptionColumnWidth()
 
         // Restore previous selection; fall back to row 0 (HEAD / uncommitted)
         val targetRow = if (previousHash != null)
@@ -1542,6 +1558,34 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
     }
 
+    // ── Column width persistence ──────────────────────────────────────────────
+
+    private fun loadColumnWidths() {
+        val w = Settings.columnWidths
+        listOf(0 to "graph", 2 to "date", 3 to "committer", 4 to "commit").forEach { (col, key) ->
+            val saved = w.optInt(key, 0)
+            if (saved > 0) commitTable.columnModel.getColumn(col).apply {
+                preferredWidth = saved; width = saved
+            }
+        }
+    }
+
+    private fun saveColumnWidths() {
+        val w = JSONObject()
+        w.put("graph",     commitTable.columnModel.getColumn(0).width)
+        w.put("date",      commitTable.columnModel.getColumn(2).width)
+        w.put("committer", commitTable.columnModel.getColumn(3).width)
+        w.put("commit",    commitTable.columnModel.getColumn(4).width)
+        Settings.columnWidths = w
+    }
+
+    private fun updateDescriptionColumnWidth() {
+        val viewW = commitScrollPane.viewport.width.takeIf { it > 0 } ?: return
+        val fixedW = listOf(0, 2, 3, 4).sumOf { commitTable.columnModel.getColumn(it).width }
+        val descW = (viewW - fixedW).coerceAtLeast(50)
+        commitTable.columnModel.getColumn(1).apply { preferredWidth = descW; width = descW }
+    }
+
     private fun parseRefs(decoration: String): List<RefInfo> {
         if (decoration.isBlank()) return emptyList()
         val result = mutableListOf<RefInfo>()
@@ -1549,7 +1593,6 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             val part = rawPart.trim()
             when {
                 part.startsWith("HEAD -> ") -> {
-                    result.add(RefInfo("HEAD", RefType.HEAD))
                     val branch = part.removePrefix("HEAD -> ")
                     result.add(RefInfo(branch, if (branch.contains("/")) RefType.REMOTE_BRANCH else RefType.LOCAL_BRANCH))
                 }
