@@ -1653,24 +1653,43 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         showLoading()
         object : SwingWorker<RefreshSnapshot, Void>() {
             override fun doInBackground(): RefreshSnapshot {
-                val b  = git.branches()
-                val l  = git.log()
-                val s  = git.stashList()
-                val st = git.status()
-                val modified = st.output.lines().count { it.length > 2 && !it.startsWith("##") }
-                val unpulled = git.unpulledCount().output.trim().toIntOrNull() ?: 0
-                val unpushed = git.unpushedCount().output.trim().toIntOrNull() ?: 0
-                val branch   = git.currentBranch().output.trim()
-                val tracking = if (branch.isNotBlank()) git.trackingBranch(branch) else null
-                val sm       = git.submoduleStatus()
-                return RefreshSnapshot(
-                    b.output, b.success, l.output, l.success,
-                    if (s.success) s.output else "",
-                    st.output,
-                    modified, unpulled, unpushed,
-                    branch, tracking,
-                    sm.output
-                )
+                // All independent commands run in parallel; only trackingBranch
+                // depends on currentBranch so those two stay sequential in one future.
+                val pool = java.util.concurrent.Executors.newCachedThreadPool()
+                return try {
+                    val fBranches    = pool.submit<com.gitnarwhal.utils.Command> { git.branches() }
+                    val fLog         = pool.submit<com.gitnarwhal.utils.Command> { git.log() }
+                    val fStash       = pool.submit<com.gitnarwhal.utils.Command> { git.stashList() }
+                    val fStatus      = pool.submit<com.gitnarwhal.utils.Command> { git.status() }
+                    val fUnpulled    = pool.submit<Int> { git.unpulledCount().output.trim().toIntOrNull() ?: 0 }
+                    val fUnpushed    = pool.submit<Int> { git.unpushedCount().output.trim().toIntOrNull() ?: 0 }
+                    val fSubmodules  = pool.submit<com.gitnarwhal.utils.Command> { git.submoduleStatus() }
+                    val fBranchTrack = pool.submit<Pair<String, Pair<String,String>?>> {
+                        val b = git.currentBranch().output.trim()
+                        b to if (b.isNotBlank()) git.trackingBranch(b) else null
+                    }
+
+                    val branches   = fBranches.get()
+                    val log        = fLog.get()
+                    val stash      = fStash.get()
+                    val status     = fStatus.get()
+                    val unpulled   = fUnpulled.get()
+                    val unpushed   = fUnpushed.get()
+                    val submodules = fSubmodules.get()
+                    val (branch, tracking) = fBranchTrack.get()
+                    val modified   = status.output.lines().count { it.length > 2 && !it.startsWith("##") }
+
+                    RefreshSnapshot(
+                        branches.output, branches.success, log.output, log.success,
+                        if (stash.success) stash.output else "",
+                        status.output,
+                        modified, unpulled, unpushed,
+                        branch, tracking,
+                        submodules.output
+                    )
+                } finally {
+                    pool.shutdown()
+                }
             }
             override fun done() {
                 val snap = try { get() } catch (e: Exception) { hideLoading(); return }
@@ -1858,7 +1877,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     fun refreshBranches() {
         showLoading()
         object : SwingWorker<String?, Void>() {
-            override fun doInBackground() = git.branches().output.takeIf { git.branches().success }
+            override fun doInBackground(): String? {
+                val r = git.branches()
+                return if (r.success) r.output else null
+            }
             override fun done() {
                 val out = try { get() } catch (e: Exception) { hideLoading(); null } ?: run { hideLoading(); return }
                 applyBranches(out)
