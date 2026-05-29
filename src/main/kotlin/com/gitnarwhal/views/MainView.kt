@@ -68,6 +68,14 @@ class MainView : JPanel(BorderLayout()) {
                     try { addNewCloneTab() }
                     finally { suppressTabChange = false }
                 }
+            } else if (idx >= 0) {
+                // Force a clean repaint to prevent ghost-rendering artifacts
+                // from the previously visible tab bleeding through.
+                val selected = tabPane.getComponentAt(idx)
+                selected?.revalidate()
+                selected?.repaint()
+                tabPane.revalidate()
+                tabPane.repaint()
             }
         }
     }
