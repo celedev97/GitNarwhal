@@ -93,6 +93,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private val branchRoot         = DefaultMutableTreeNode("root")
     private val localBranchesNode  = DefaultMutableTreeNode("LOCAL BRANCHES")
     private val remoteBranchesNode = DefaultMutableTreeNode("REMOTE BRANCHES")
+    private var isHeadDetached     = false
     private val branchTreeModel    = DefaultTreeModel(branchRoot)
     private val branchTree: JTree
 
@@ -618,6 +619,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     private fun showFileStatus() {
         mainCards.show(mainContainer, CARD_FILE_STATUS)
+        mainContainer.revalidate()
+        mainContainer.repaint()
         refreshAuthorLabel()
         refreshFileStatus()
     }
@@ -631,6 +634,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 val row = commitList.indexOfFirst { it.hash.startsWith(hash) || hash.startsWith(it.hash) }
                 if (row < 0) return
                 mainCards.show(mainContainer, CARD_HISTORY)
+                mainContainer.revalidate()
+                mainContainer.repaint()
                 commitTable.selectionModel.setSelectionInterval(row, row)
                 commitTable.scrollRectToVisible(commitTable.getCellRect(row, 0, true))
             }
@@ -1020,7 +1025,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             val tp = branchTree.getPathForLocation(e.x, e.y) ?: return
             branchTree.selectionPath = tp
             val bi = (tp.lastPathComponent as? DefaultMutableTreeNode)?.userObject as? BranchInfo ?: return
-            buildBranchPopup(bi.fullName).show(branchTree, e.x, e.y)
+            val isLocal = tp.path.any { it == localBranchesNode }
+            buildBranchPopup(bi.fullName, isLocal).show(branchTree, e.x, e.y)
         }
         override fun mouseClicked(e: MouseEvent) {
             if (e.clickCount == 2 && SwingUtilities.isLeftMouseButton(e)) {
@@ -1031,9 +1037,17 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
     }
 
-    private fun buildBranchPopup(branchFullName: String): JPopupMenu {
+    private fun buildBranchPopup(branchFullName: String, isLocal: Boolean = false): JPopupMenu {
         val menu = JPopupMenu()
         menu.add(menuItem("Checkout") { checkoutBranch(branchFullName) })
+        if (isLocal && isHeadDetached) {
+            menu.add(menuItem("Move branch to HEAD") {
+                if (confirm("Move '$branchFullName' to current HEAD?\n\ngit branch -f $branchFullName HEAD")) {
+                    val r = git.moveBranchToRef(branchFullName, "HEAD")
+                    if (!r.success) showError("Move branch failed", r.output) else refresh()
+                }
+            })
+        }
         menu.add(menuItem("Merge into current") {
             if (confirm("Merge '$branchFullName' into current branch?")) {
                 val r = git.merge(branchFullName)
@@ -1089,6 +1103,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         })
         workspacePanel.add(workspaceItem("History", MaterialDesign.MDI_HISTORY) {
             mainCards.show(mainContainer, CARD_HISTORY)
+            mainContainer.revalidate()
+            mainContainer.repaint()
         })
 
         // BRANCHES section
@@ -1160,6 +1176,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         bar.add(Box.createHorizontalGlue())
 
         bar.add(iconBtn(MaterialDesign.MDI_EARTH,    "Remote")   { openRemote() })
+        bar.add(iconBtn(MaterialDesign.MDI_CODE_BRACES, "Open in VS Code") { openInVSCode() })
         bar.add(iconBtn(MaterialDesign.MDI_CONSOLE,  "Terminal") { openTerminal() })
         bar.add(iconBtn(MaterialDesign.MDI_FOLDER,   "Explorer") { openExplorer() })
         bar.addSeparator()
@@ -1430,6 +1447,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     // ── Data application (EDT) ────────────────────────────────────────────────
 
     private fun applyBranches(output: String) {
+        isHeadDetached = output.lines().any { it.trimStart().startsWith("* (HEAD detached") }
         localBranchesNode.removeAllChildren()
         remoteBranchesNode.removeAllChildren()
         for (line in output.lines()) {
@@ -1573,7 +1591,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         // ── Uncommitted-changes virtual node ─────────────────────────────────
         if (hasUncommitted && localList.isNotEmpty()) {
-            val head = localList.first()
+            val head = localList.firstOrNull { it.isCurrentHead } ?: localList.first()
             val virtual = Commit(UNCOMMITTED_HASH, this).apply {
                 prePopulate(listOf("", "", "", "", "", "Uncommitted changes"))
                 x     = head.x
@@ -1690,20 +1708,42 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     // ── Misc helpers ──────────────────────────────────────────────────────────
 
-    fun showHistoryView()    = mainCards.show(mainContainer, CARD_HISTORY)
+    fun showHistoryView() {
+        mainCards.show(mainContainer, CARD_HISTORY)
+        mainContainer.revalidate()
+        mainContainer.repaint()
+    }
     fun showFileStatusView() = showFileStatus()
     fun openSettings()       { RepoSettingsDialog(git, SwingUtilities.getWindowAncestor(this)).isVisible = true }
 
     fun openTerminal() = Thread {
-        val custom = Settings.terminalCommand.trim()
-        if (custom.isNotBlank()) {
-            val expanded = custom.replace("\$REPO", path)
-            Command(expanded).execute(path)
-        } else {
-            OS.TERMINAL.execute(path)
+        when (Settings.terminalPreset) {
+            "gitbash" -> {
+                val gitBash = com.gitnarwhal.backend.Git.GIT.removeSuffix("cmd\\git.exe") + "git-bash.exe"
+                if (java.nio.file.Files.exists(java.nio.file.Path.of(gitBash)))
+                    Command(gitBash).execute(path)
+                else
+                    Command("git-bash").execute(path)
+            }
+            "pwsh"           -> Command("pwsh").execute(path)
+            "powershell"     -> Command("powershell").execute(path)
+            "wt"             -> Command("wt", "-d", path).execute()
+            "cmd"            -> Command("cmd").execute(path)
+            "terminal"       -> Command("open", "-a", "Terminal", path).execute()
+            "iterm2"         -> Command("open", "-a", "iTerm", path).execute()
+            "gnome-terminal" -> Command("gnome-terminal").execute(path)
+            "konsole"        -> Command("konsole").execute(path)
+            "xterm"          -> Command("xterm").execute(path)
+            "custom" -> {
+                val custom = Settings.terminalCommand.trim()
+                if (custom.isNotBlank()) Command(custom.replace("\$REPO", path)).execute(path)
+                else OS.TERMINAL.execute(path)
+            }
+            else -> OS.TERMINAL.execute(path)
         }
     }.start()
-    fun openExplorer() = Thread { (OS.EXPLORER + path).execute() }.start()
+    fun openInVSCode()  = Thread { Command("code", path).execute() }.start()
+    fun openExplorer()  = Thread { (OS.EXPLORER + path).execute() }.start()
     fun openRemote()   = Thread { (OS.BROWSER  + git.remoteUrl().output).execute() }.start()
 
     fun selectCommit(hash: String) {
