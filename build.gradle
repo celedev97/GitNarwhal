@@ -164,10 +164,7 @@ class JREPackager implements Plugin<Project> {
         def win64app = project.task("win64app") {
             dependsOn jar
             doLast {
-                def bundleFolder = bundleJRE("windows/x64", conf.jreVersion, project.buildDir.absolutePath)
-                PrintWriter out = new PrintWriter(bundleFolder + "/" + project.name + ".bat")
-                out.println('START %~dp0/jre/bin/javaw.exe -jar %~dp0/jars/' + project.tasks.getByName("jar").archiveFileName.get());
-                out.close()
+                bundleJRE("windows/x64", conf.jreVersion, project.buildDir.absolutePath)
             }
         }
         def linux64app = project.task("linux64app") {
