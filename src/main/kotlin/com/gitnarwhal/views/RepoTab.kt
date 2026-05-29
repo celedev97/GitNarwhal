@@ -578,6 +578,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     conflictBannerLabel.text = "⚠  $op in progress — ${conflictFiles.size} conflict(s)"
                     conflictContinueBtn.text = if (isRebase) "Continue Rebase" else "Commit Merge"
                     conflictBanner.isVisible = true
+                    if (commitMsgField.text.isBlank()) {
+                        val mergeMsg = java.io.File(git.repo, ".git/MERGE_MSG")
+                        if (mergeMsg.exists()) commitMsgField.text = mergeMsg.readText()
+                    }
                 } else {
                     conflictBanner.isVisible = false
                 }
