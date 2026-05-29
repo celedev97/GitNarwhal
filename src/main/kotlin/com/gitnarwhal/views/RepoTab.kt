@@ -131,7 +131,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     private val commitMsgField          = JTextArea(4, 40).apply { lineWrap = true; wrapStyleWord = true }
     private val amendCheckBox           = JCheckBox("Amend latest commit")
-    private val pushImmediatelyCheckBox = JCheckBox("Push changes immediately to origin/main")
+    private val pushImmediatelyCheckBox = JCheckBox("Push changes immediately")
+
+    // Tracking branch of the current local branch — populated by refresh()
+    private var currentBranchName : String = ""
+    private var trackingRemote    : String? = null
+    private var trackingBranchRef : String? = null
 
     // ── Badge toolbar buttons ─────────────────────────────────────────────────
     private val commitBtn = BadgeButton(MaterialDesign.MDI_CHECK_CIRCLE, "Commit") { showFileStatus() }
@@ -998,7 +1003,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     pushImmediatelyCheckBox.isSelected = false
                     refresh()
                     refreshFileStatus()
-                    if (shouldPush) push()
+                    if (shouldPush) pushToTrackingBranch()
                 }
             }
         }.execute()
@@ -1446,7 +1451,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val statusOut: String,
         val modifiedCount: Int,
         val unpulledCount: Int,
-        val unpushedCount: Int
+        val unpushedCount: Int,
+        val currentBranch: String,
+        val tracking: Pair<String, String>?   // remote to trackingBranch
     )
 
     fun refresh() {
@@ -1459,11 +1466,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 val modified = st.output.lines().count { it.length > 2 && !it.startsWith("##") }
                 val unpulled = git.unpulledCount().output.trim().toIntOrNull() ?: 0
                 val unpushed = git.unpushedCount().output.trim().toIntOrNull() ?: 0
+                val branch   = git.currentBranch().output.trim()
+                val tracking = if (branch.isNotBlank()) git.trackingBranch(branch) else null
                 return RefreshSnapshot(
                     b.output, b.success, l.output, l.success,
                     if (s.success) s.output else "",
                     st.output,
-                    modified, unpulled, unpushed
+                    modified, unpulled, unpushed,
+                    branch, tracking
                 )
             }
             override fun done() {
@@ -1475,8 +1485,19 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 commitBtn.badge = snap.modifiedCount
                 pullBtn.badge   = snap.unpulledCount
                 pushBtn.badge   = snap.unpushedCount
+                currentBranchName = snap.currentBranch
+                trackingRemote    = snap.tracking?.first
+                trackingBranchRef = snap.tracking?.second
+                updatePushCheckboxLabel()
             }
         }.execute()
+    }
+
+    private fun updatePushCheckboxLabel() {
+        val r = trackingRemote; val b = trackingBranchRef
+        pushImmediatelyCheckBox.text      = if (r != null && b != null)
+            "Push changes immediately to $r/$b" else "Push changes immediately (no upstream)"
+        pushImmediatelyCheckBox.isEnabled = r != null && b != null
     }
 
     fun refreshBranches() {
@@ -1770,6 +1791,27 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
     fun showFileStatusView() = showFileStatus()
     fun openSettings()       { RepoSettingsDialog(git, SwingUtilities.getWindowAncestor(this)).isVisible = true }
+
+    private fun pushToTrackingBranch() {
+        val remote = trackingRemote ?: return push()   // fallback to full dialog if no upstream
+        val branch = trackingBranchRef ?: return push()
+        val local  = currentBranchName
+        val overlay = ProgressOverlay()
+        object : SwingWorker<Boolean, String>() {
+            override fun doInBackground(): Boolean {
+                val r = git.pushRefspecStream(remote, local, branch,
+                    force = false, setUpstream = false) { publish(it) }
+                return r.success
+            }
+            override fun process(chunks: List<String>) { chunks.forEach { overlay.appendOutput(it) } }
+            override fun done() {
+                val ok = try { get() } catch (_: Exception) { false }
+                overlay.finishStreaming(ok)
+                refresh()
+            }
+        }.execute()
+        overlay.show(SwingUtilities.getRootPane(this), "Pushing to $remote/$branch…")
+    }
 
     fun openTerminal() = Thread {
         when (Settings.terminalPreset) {
