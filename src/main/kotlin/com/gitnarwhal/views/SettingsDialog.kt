@@ -21,6 +21,7 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
     private val emailField       = JTextField()
     private val reopenTabsCk     = JCheckBox("Re-open repository tabs at startup")
     private val cloneFolderField = JTextField()
+    private val terminalField    = JTextField()
 
     // ── Updates ───────────────────────────────────────────────────────────────
     private val autoUpdateCk = JCheckBox("Automatically notify me of available updates")
@@ -61,10 +62,13 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
         add(tabs, BorderLayout.CENTER)
         add(buildButtonBar(), BorderLayout.SOUTH)
 
-        loadValues()
         pack()
         minimumSize = Dimension(580, 520)
         setLocationRelativeTo(owner)
+
+        // Load fast (Settings-only) values immediately, then fetch git global config in background
+        loadSettingsValues()
+        loadGitConfigAsync()
     }
 
     // ── Tab: General ──────────────────────────────────────────────────────────
@@ -99,7 +103,10 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
         }
         p.add(section("Startup",
             JPanel(BorderLayout()).apply { isOpaque = false; add(reopenTabsCk) },
-            formRow("Default clone folder:", cloneRow)
+            formRow("Default clone folder:", cloneRow),
+            formRow("Terminal command:", terminalField).also {
+                terminalField.toolTipText = "Leave blank to auto-detect. Use \$REPO as a placeholder for the repo path."
+            }
         ))
         p.add(Box.createVerticalGlue())
         return p
@@ -252,34 +259,30 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
 
     // ── Load / Apply ──────────────────────────────────────────────────────────
 
-    private fun loadValues() {
+    /** Fast: reads from in-memory Settings JSONObject only — safe to call on EDT. */
+    private fun loadSettingsValues() {
         ThemeService.listThemes().let { themes ->
             themeCombo.removeAllItems()
             themes.forEach { themeCombo.addItem(it) }
             val cur = Settings.theme
             themes.indexOfFirst { it.path == cur }.takeIf { it >= 0 }?.let { themeCombo.selectedIndex = it }
         }
-        fullNameField.text    = Git.globalGet("user.name")
-        emailField.text       = Git.globalGet("user.email")
         reopenTabsCk.isSelected   = Settings.reopenTabs
-        cloneFolderField.text = Settings.defaultCloneFolder
+        cloneFolderField.text     = Settings.defaultCloneFolder
+        terminalField.text        = Settings.terminalCommand
 
         autoUpdateCk.isSelected = Settings.autoUpdate
 
         diffFontFamily = Settings.diffFontFamily
         diffFontSize   = Settings.diffFontSize
         updateDiffFontLabel()
-        ignoreWsCk.isSelected     = Settings.diffIgnoreWhitespace
-        ignorePatternsArea.text   = Settings.diffIgnorePatterns
+        ignoreWsCk.isSelected   = Settings.diffIgnoreWhitespace
+        ignorePatternsArea.text = Settings.diffIgnorePatterns
 
-        gitignoreField.text = Git.globalGet("core.excludesfile")
-        pullBehaviorCombo.selectedItem = if (Git.globalGet("pull.rebase") == "true") "Rebase" else "Merge"
-        pruneCk.isSelected = Git.globalGet("fetch.prune") == "true"
-        autocrlfCombo.selectedItem = Git.globalGet("core.autocrlf").ifBlank { "false" }
         enableForcePushCk.isSelected = Settings.enableForcePush
         safeForcePushCk.isEnabled    = Settings.enableForcePush
         safeForcePushCk.isSelected   = Settings.safeForcePush
-        gitPathField.text = Settings.gitPath.ifBlank { Git.GIT }
+        gitPathField.text            = Settings.gitPath.ifBlank { Git.GIT }
 
         actions.clear()
         val arr = Settings.customActions
@@ -288,6 +291,29 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
             actions.add(CustomAction(o.optString("name"), o.optString("command"), o.optString("params"), o.optString("shortcut")))
         }
         actionsModel.fireTableDataChanged()
+    }
+
+    /** Slow: spawns git subprocesses — runs in background, populates fields when done. */
+    private fun loadGitConfigAsync() {
+        object : javax.swing.SwingWorker<Array<String>, Void>() {
+            override fun doInBackground() = arrayOf(
+                Git.globalGet("user.name"),
+                Git.globalGet("user.email"),
+                Git.globalGet("core.excludesfile"),
+                Git.globalGet("pull.rebase"),
+                Git.globalGet("fetch.prune"),
+                Git.globalGet("core.autocrlf")
+            )
+            override fun done() {
+                val v = try { get() } catch (_: Exception) { return }
+                fullNameField.text             = v[0]
+                emailField.text               = v[1]
+                gitignoreField.text           = v[2]
+                pullBehaviorCombo.selectedItem = if (v[3] == "true") "Rebase" else "Merge"
+                pruneCk.isSelected            = v[4] == "true"
+                autocrlfCombo.selectedItem    = v[5].ifBlank { "false" }
+            }
+        }.execute()
     }
 
     private fun applyChanges() {
@@ -303,6 +329,7 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
         if (email.isNotBlank()) Git.globalSet("user.email", email)
         Settings.reopenTabs         = reopenTabsCk.isSelected
         Settings.defaultCloneFolder = cloneFolderField.text.trim()
+        Settings.terminalCommand    = terminalField.text.trim()
 
         Settings.autoUpdate = autoUpdateCk.isSelected
 
