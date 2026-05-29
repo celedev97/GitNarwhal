@@ -28,6 +28,7 @@ object Settings : JSONObject(settingsJSON) {
     // General
     var reopenTabs          by JSONSetting(true)
     var defaultCloneFolder  by JSONSetting("")
+    var terminalPreset      by JSONSetting("auto")
     var terminalCommand     by JSONSetting("")
 
     // Diff

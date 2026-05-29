@@ -21,7 +21,33 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
     private val emailField       = JTextField()
     private val reopenTabsCk     = JCheckBox("Re-open repository tabs at startup")
     private val cloneFolderField = JTextField()
-    private val terminalField    = JTextField()
+    private val terminalOptions: List<Pair<String, String>> = when (com.gitnarwhal.utils.OS.CURRENT) {
+        com.gitnarwhal.utils.OS.WINDOWS -> listOf(
+            "Auto-detect"        to "auto",
+            "Git Bash"           to "gitbash",
+            "PowerShell (pwsh)"  to "pwsh",
+            "Windows PowerShell" to "powershell",
+            "Windows Terminal"   to "wt",
+            "Command Prompt"     to "cmd",
+            "Custom…"            to "custom"
+        )
+        com.gitnarwhal.utils.OS.MAC -> listOf(
+            "Auto-detect"  to "auto",
+            "Terminal.app" to "terminal",
+            "iTerm2"       to "iterm2",
+            "Custom…"      to "custom"
+        )
+        else -> listOf(
+            "Auto-detect"     to "auto",
+            "GNOME Terminal"  to "gnome-terminal",
+            "Konsole"         to "konsole",
+            "xterm"           to "xterm",
+            "Custom…"         to "custom"
+        )
+    }
+    private val terminalPresetCombo = JComboBox<String>(terminalOptions.map { it.first }.toTypedArray())
+    private val terminalField       = JTextField()
+    private lateinit var terminalCustomRow: JPanel
 
     // ── Updates ───────────────────────────────────────────────────────────────
     private val autoUpdateCk = JCheckBox("Automatically notify me of available updates")
@@ -104,8 +130,18 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
         p.add(section("Startup",
             JPanel(BorderLayout()).apply { isOpaque = false; add(reopenTabsCk) },
             formRow("Default clone folder:", cloneRow),
-            formRow("Terminal command:", terminalField).also {
-                terminalField.toolTipText = "Leave blank to auto-detect. Use \$REPO as a placeholder for the repo path."
+            formRow("Terminal:", terminalPresetCombo),
+            run {
+                terminalCustomRow = formRow("Custom command:", terminalField).also {
+                    terminalField.toolTipText = "Use \$REPO as a placeholder for the repo path."
+                }
+                terminalPresetCombo.addActionListener {
+                    val isCustom = terminalOptions.getOrNull(terminalPresetCombo.selectedIndex)?.second == "custom"
+                    terminalCustomRow.isVisible = isCustom
+                    terminalCustomRow.parent?.revalidate()
+                    terminalCustomRow.parent?.repaint()
+                }
+                terminalCustomRow
             }
         ))
         p.add(Box.createVerticalGlue())
@@ -269,7 +305,11 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
         }
         reopenTabsCk.isSelected   = Settings.reopenTabs
         cloneFolderField.text     = Settings.defaultCloneFolder
+        val presetKey = Settings.terminalPreset
+        val presetIdx = terminalOptions.indexOfFirst { it.second == presetKey }.takeIf { it >= 0 } ?: 0
+        terminalPresetCombo.selectedIndex = presetIdx
         terminalField.text        = Settings.terminalCommand
+        terminalCustomRow.isVisible = terminalOptions.getOrNull(presetIdx)?.second == "custom"
 
         autoUpdateCk.isSelected = Settings.autoUpdate
 
@@ -329,6 +369,7 @@ class SettingsDialog(owner: Window?) : JDialog(owner, "Settings", ModalityType.A
         if (email.isNotBlank()) Git.globalSet("user.email", email)
         Settings.reopenTabs         = reopenTabsCk.isSelected
         Settings.defaultCloneFolder = cloneFolderField.text.trim()
+        Settings.terminalPreset     = terminalOptions.getOrNull(terminalPresetCombo.selectedIndex)?.second ?: "auto"
         Settings.terminalCommand    = terminalField.text.trim()
 
         Settings.autoUpdate = autoUpdateCk.isSelected

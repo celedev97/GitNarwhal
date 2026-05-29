@@ -204,7 +204,8 @@ class Git(val repo: String) {
     fun createBranchFrom(branch: String, startPoint: String) = git("checkout", "-b", branch, startPoint)
     fun deleteBranch(branch: String, force: Boolean = false) =
         if (force) git("branch", "-D", branch) else git("branch", "-d", branch)
-    fun renameBranch(old: String, new: String) = git("branch", "-m", old, new)
+    fun renameBranch(old: String, new: String)       = git("branch", "-m", old, new)
+    fun moveBranchToRef(branch: String, ref: String) = git("branch", "-f", branch, ref)
     //endregion
 
     //region staging
