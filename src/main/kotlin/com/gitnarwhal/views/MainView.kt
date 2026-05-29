@@ -26,12 +26,15 @@ class MainView : JPanel(BorderLayout()) {
      * the listener again and spawn a second AddCloneTab.
      */
     @Volatile private var suppressTabChange = false
+    /** True while restoring saved tabs at startup — prevents triggering refresh on every tab as it's added. */
+    private var loadingTabs = false
     private var dragSourceIndex = -1
 
     init {
         add(tabPane, BorderLayout.CENTER)
 
         //region restore last-open tabs
+        loadingTabs = true
         try {
             val toRemove = arrayListOf<JSONObject>()
             for (tab in if (Settings.reopenTabs) Settings.openTabs.map { it as JSONObject } else emptyList()) {
@@ -49,6 +52,7 @@ class MainView : JPanel(BorderLayout()) {
             Settings.openTabs.removeAll { true }
         }
         Settings.save()
+        loadingTabs = false
         //endregion
 
         addPlusTab()
@@ -101,12 +105,14 @@ class MainView : JPanel(BorderLayout()) {
                 }
             } else if (idx >= 0) {
                 // Force a clean repaint to prevent ghost-rendering artifacts
-                // from the previously visible tab bleeding through.
                 val selected = tabPane.getComponentAt(idx)
                 selected?.revalidate()
                 selected?.repaint()
                 tabPane.revalidate()
                 tabPane.repaint()
+                // Trigger data load for the newly selected tab.
+                // Skipped while loadingTabs (startup) — only the final selectedIndex=0 fires it.
+                if (!loadingTabs) (selected as? RepoTab)?.onTabSelected()
             }
         }
     }

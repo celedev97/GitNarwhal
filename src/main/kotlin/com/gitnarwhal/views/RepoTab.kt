@@ -307,7 +307,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
 
         installCommitContextMenu()
-        refresh()
+        // NOTE: refresh() is NOT called here — MainView calls it when the tab is first shown.
+    }
+
+    /** Called by MainView the first time this tab is selected, and on subsequent focus. */
+    private var everShown = false
+    fun onTabSelected() {
+        if (!everShown) { everShown = true; refresh() }
+        else refresh()
     }
 
     // ── Card constants + graph palette ───────────────────────────────────────
@@ -1645,16 +1652,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val unpulledCount: Int,
         val unpushedCount: Int,
         val currentBranch: String,
-        val tracking: Pair<String, String>?,  // remote to trackingBranch
-        val submoduleOut: String
+        val tracking: Pair<String, String>?   // remote to trackingBranch
+        // submoduleStatus is intentionally NOT here — it runs in a separate lazy task
     )
 
     fun refresh() {
         showLoading()
         object : SwingWorker<RefreshSnapshot, Void>() {
             override fun doInBackground(): RefreshSnapshot {
-                // All independent commands run in parallel; only trackingBranch
-                // depends on currentBranch so those two stay sequential in one future.
                 val pool = java.util.concurrent.Executors.newCachedThreadPool()
                 return try {
                     val fBranches    = pool.submit<com.gitnarwhal.utils.Command> { git.branches() }
@@ -1663,29 +1668,26 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     val fStatus      = pool.submit<com.gitnarwhal.utils.Command> { git.status() }
                     val fUnpulled    = pool.submit<Int> { git.unpulledCount().output.trim().toIntOrNull() ?: 0 }
                     val fUnpushed    = pool.submit<Int> { git.unpushedCount().output.trim().toIntOrNull() ?: 0 }
-                    val fSubmodules  = pool.submit<com.gitnarwhal.utils.Command> { git.submoduleStatus() }
                     val fBranchTrack = pool.submit<Pair<String, Pair<String,String>?>> {
                         val b = git.currentBranch().output.trim()
                         b to if (b.isNotBlank()) git.trackingBranch(b) else null
                     }
 
                     val branches   = fBranches.get()
-                    val log        = fLog.get()
+                    val log_       = fLog.get()
                     val stash      = fStash.get()
                     val status     = fStatus.get()
                     val unpulled   = fUnpulled.get()
                     val unpushed   = fUnpushed.get()
-                    val submodules = fSubmodules.get()
                     val (branch, tracking) = fBranchTrack.get()
                     val modified   = status.output.lines().count { it.length > 2 && !it.startsWith("##") }
 
                     RefreshSnapshot(
-                        branches.output, branches.success, log.output, log.success,
+                        branches.output, branches.success, log_.output, log_.success,
                         if (stash.success) stash.output else "",
                         status.output,
                         modified, unpulled, unpushed,
-                        branch, tracking,
-                        submodules.output
+                        branch, tracking
                     )
                 } finally {
                     pool.shutdown()
@@ -1704,8 +1706,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 trackingRemote    = snap.tracking?.first
                 trackingBranchRef = snap.tracking?.second
                 updatePushCheckboxLabel()
-                applySubmodules(snap.submoduleOut)
                 hideLoading()
+                // Submodule status runs separately so it never blocks the main UI
+                refreshSubmodulesAsync()
             }
         }.execute()
     }
@@ -1861,6 +1864,17 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             .firstOrNull { java.io.File(it.path).canonicalPath == subPath }
         if (existing != null) mainView.selectTab(existing)
         else mainView.addTab(RepoTab(subPath, info.name))
+    }
+
+    /** Fetches submodule status in background WITHOUT blocking or showing the loading bar. */
+    private fun refreshSubmodulesAsync() {
+        object : SwingWorker<String, Void>() {
+            override fun doInBackground() = git.submoduleStatus().output
+            override fun done() {
+                val out = try { get() } catch (_: Exception) { return }
+                applySubmodules(out)
+            }
+        }.execute()
     }
 
     private var loadingCount = 0
