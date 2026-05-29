@@ -116,6 +116,16 @@ class Git(val repo: String) {
         else emptyList()
     }
 
+    /** Returns (remote, branchName) of the tracking branch for [branch], or null if none. */
+    fun trackingBranch(branch: String): Pair<String, String>? {
+        val remote = git("config", "branch.$branch.remote").takeIf { it.success }?.output?.trim()
+            ?.takeIf { it.isNotBlank() } ?: return null
+        val merge  = git("config", "branch.$branch.merge" ).takeIf { it.success }?.output?.trim()
+            ?.takeIf { it.isNotBlank() } ?: return null
+        val trackBranch = merge.removePrefix("refs/heads/")
+        return if (trackBranch.isNotBlank()) remote to trackBranch else null
+    }
+
     fun remoteNames(): List<String> {
         val out = remoteList()
         return if (out.success) out.output.lines().map { it.trim() }.filter { it.isNotBlank() } else emptyList()
