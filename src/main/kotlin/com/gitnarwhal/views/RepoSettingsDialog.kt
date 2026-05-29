@@ -39,6 +39,9 @@ class RepoSettingsDialog(private val git: Git, owner: Window?) :
         rowHeight = 22
     }
 
+    // ── Advanced — IDE ────────────────────────────────────────────────────────
+    private val ideField = JTextField(30)
+
     // ── Advanced — user info ──────────────────────────────────────────────────
     private val useGlobalCheckBox = JCheckBox("Use global user settings")
     private val fullNameField     = JTextField(30)
@@ -58,6 +61,7 @@ class RepoSettingsDialog(private val git: Git, owner: Window?) :
 
         loadRemotes()
         loadUserInfo()
+        ideField.text = git.configGet("gitnarwhal.ideCommand").output.trim()
 
         pack()
         minimumSize = Dimension(600, 460)
@@ -176,6 +180,15 @@ class RepoSettingsDialog(private val git: Git, owner: Window?) :
         outer.add(ignorePanel)
         outer.add(Box.createVerticalStrut(8))
 
+        // IDE command
+        val idePanel = JPanel(BorderLayout(6, 0))
+        idePanel.border = BorderFactory.createTitledBorder("IDE command (overrides global setting)")
+        ideField.toolTipText = "Command used by 'Open in IDE'. Use \$REPO as placeholder. Leave blank to use global setting."
+        idePanel.add(ideField, BorderLayout.CENTER)
+        idePanel.maximumSize = Dimension(Int.MAX_VALUE, idePanel.preferredSize.height + 16)
+        outer.add(idePanel)
+        outer.add(Box.createVerticalStrut(8))
+
         // User info
         val userPanel = JPanel(GridBagLayout())
         userPanel.border = BorderFactory.createTitledBorder("User information")
@@ -257,6 +270,11 @@ class RepoSettingsDialog(private val git: Git, owner: Window?) :
             val cur = remotes.find { it.name == orig.name } ?: continue
             if (cur.url != orig.url) git.remoteSetUrl(cur.name, cur.url)
         }
+
+        // IDE command (per-repo)
+        val ideCmd = ideField.text.trim()
+        if (ideCmd.isNotBlank()) git.configSet("gitnarwhal.ideCommand", ideCmd)
+        else git.configUnset("gitnarwhal.ideCommand")
 
         // User info
         if (useGlobalCheckBox.isSelected) {

@@ -1177,7 +1177,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         bar.add(Box.createHorizontalGlue())
 
         bar.add(iconBtn(MaterialDesign.MDI_EARTH,    "Remote")   { openRemote() })
-        bar.add(iconBtn(MaterialDesign.MDI_CODE_BRACES, "Open in VS Code") { openInVSCode() })
+        bar.add(iconBtn(MaterialDesign.MDI_CODE_BRACES, "Open in IDE") { openInIDE() })
         bar.add(iconBtn(MaterialDesign.MDI_CONSOLE,  "Terminal") { openTerminal() })
         bar.add(iconBtn(MaterialDesign.MDI_FOLDER,   "Explorer") { openExplorer() })
         bar.addSeparator()
@@ -1743,7 +1743,35 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             else -> OS.TERMINAL.execute(path)
         }
     }.start()
-    fun openInVSCode()  = Thread { Command("code", path).execute() }.start()
+    fun openInIDE() = Thread {
+        val repoCmd   = git.configGet("gitnarwhal.ideCommand").output.trim()
+        val globalCmd = Settings.ideCommand.trim()
+        when {
+            repoCmd.isNotBlank()   -> Command(repoCmd.replace("\$REPO", path)).execute(path)
+            globalCmd.isNotBlank() -> Command(globalCmd.replace("\$REPO", path)).execute(path)
+            else -> ideAutoDetect()
+        }
+    }.start()
+
+    private fun ideAutoDetect() {
+        // Try `code` in PATH (works when VS Code shell integration is installed)
+        val codeInPath = Command.find("code")
+        if (codeInPath != null) { (codeInPath + path).execute(); return }
+        // Windows: check common install locations
+        if (OS.CURRENT == OS.WINDOWS) {
+            val candidates = listOfNotNull(
+                System.getenv("LOCALAPPDATA")?.let { "$it\\Programs\\Microsoft VS Code\\Code.exe" },
+                System.getenv("PROGRAMFILES")?.let  { "$it\\Microsoft VS Code\\Code.exe" },
+                System.getenv("PROGRAMFILES(X86)")?.let { "$it\\Microsoft VS Code\\Code.exe" }
+            ).filter { java.io.File(it).exists() }
+            val exe = candidates.firstOrNull()
+            if (exe != null) { Command(exe, path).execute(); return }
+        }
+        // macOS: open via Finder
+        if (OS.CURRENT == OS.MAC) { Command("open", "-a", "Visual Studio Code", path).execute(); return }
+        // Linux/fallback
+        Command("code", path).execute()
+    }
     fun openExplorer()  = Thread { (OS.EXPLORER + path).execute() }.start()
     fun openRemote()   = Thread { (OS.BROWSER  + git.remoteUrl().output).execute() }.start()
 
