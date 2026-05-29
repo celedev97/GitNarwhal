@@ -24,6 +24,7 @@ object Settings : JSONObject(settingsJSON) {
 
     var openTabs             by JSONSetting(JSONArray())
     var recentRepos          by JSONSetting(JSONArray())
+    var recentFolders        by JSONSetting(JSONArray())
 
     // General
     var reopenTabs          by JSONSetting(true)

@@ -7,17 +7,20 @@ import org.junit.jupiter.api.Assertions.*
 class RecentReposServiceTest {
 
     private lateinit var savedRepos: JSONArray
+    private lateinit var savedFolders: JSONArray
 
     @BeforeEach
     fun backup() {
-        savedRepos = Settings.recentRepos
-        // Start each test with a clean slate
-        Settings.recentRepos = JSONArray()
+        savedRepos    = Settings.recentRepos
+        savedFolders  = Settings.recentFolders
+        Settings.recentRepos   = JSONArray()
+        Settings.recentFolders = JSONArray()
     }
 
     @AfterEach
     fun restore() {
-        Settings.recentRepos = savedRepos
+        Settings.recentRepos   = savedRepos
+        Settings.recentFolders = savedFolders
     }
 
     @Test
@@ -100,5 +103,102 @@ class RecentReposServiceTest {
         assertNotNull(repo.name)
         assertNotNull(repo.path)
         assertTrue(repo.lastOpened > 0)
+    }
+
+    // ── renameRepo ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `renameRepo updates display name`() {
+        RecentReposService.record("OldName", "/rename/path")
+        RecentReposService.renameRepo("/rename/path", "NewName")
+        assertEquals("NewName", RecentReposService.getAll()[0].name)
+    }
+
+    @Test
+    fun `renameRepo on nonexistent path does nothing`() {
+        RecentReposService.record("Keep", "/keep")
+        assertDoesNotThrow { RecentReposService.renameRepo("/no-such", "X") }
+        assertEquals("Keep", RecentReposService.getAll()[0].name)
+    }
+
+    // ── Folders ───────────────────────────────────────────────────────────────
+
+    @Test
+    fun `getFolders returns empty list when none exist`() {
+        assertTrue(RecentReposService.getFolders().isEmpty())
+    }
+
+    @Test
+    fun `addFolder creates a folder with non-blank id and name`() {
+        val id = RecentReposService.addFolder("Work")
+        val folders = RecentReposService.getFolders()
+        assertEquals(1, folders.size)
+        assertEquals("Work", folders[0].name)
+        assertEquals(id, folders[0].id)
+        assertTrue(id.isNotBlank())
+    }
+
+    @Test
+    fun `addFolder allows multiple folders`() {
+        RecentReposService.addFolder("Work")
+        RecentReposService.addFolder("Personal")
+        assertEquals(2, RecentReposService.getFolders().size)
+    }
+
+    @Test
+    fun `renameFolder updates folder name`() {
+        val id = RecentReposService.addFolder("OldFolder")
+        RecentReposService.renameFolder(id, "NewFolder")
+        assertEquals("NewFolder", RecentReposService.getFolders()[0].name)
+    }
+
+    @Test
+    fun `renameFolder on nonexistent id does nothing`() {
+        RecentReposService.addFolder("Keep")
+        assertDoesNotThrow { RecentReposService.renameFolder("no-such-id", "X") }
+        assertEquals("Keep", RecentReposService.getFolders()[0].name)
+    }
+
+    @Test
+    fun `setRepoFolder assigns a repo to a folder`() {
+        val id = RecentReposService.addFolder("MyFolder")
+        RecentReposService.record("Repo", "/repo/path")
+        RecentReposService.setRepoFolder("/repo/path", id)
+        assertEquals(id, RecentReposService.getAll()[0].folderId)
+    }
+
+    @Test
+    fun `setRepoFolder with null removes repo from folder`() {
+        val id = RecentReposService.addFolder("F")
+        RecentReposService.record("Repo", "/repo/path")
+        RecentReposService.setRepoFolder("/repo/path", id)
+        RecentReposService.setRepoFolder("/repo/path", null)
+        assertNull(RecentReposService.getAll()[0].folderId)
+    }
+
+    @Test
+    fun `record preserves folderId when re-recording same path`() {
+        val id = RecentReposService.addFolder("F")
+        RecentReposService.record("Repo", "/repo/path")
+        RecentReposService.setRepoFolder("/repo/path", id)
+        RecentReposService.record("Repo Updated", "/repo/path")
+        assertEquals(id, RecentReposService.getAll()[0].folderId)
+    }
+
+    @Test
+    fun `removeFolder deletes folder and ungroups its repos`() {
+        val id = RecentReposService.addFolder("ToDelete")
+        RecentReposService.record("Repo", "/repo/path")
+        RecentReposService.setRepoFolder("/repo/path", id)
+        RecentReposService.removeFolder(id)
+        assertTrue(RecentReposService.getFolders().isEmpty())
+        assertNull(RecentReposService.getAll()[0].folderId)
+    }
+
+    @Test
+    fun `removeFolder on nonexistent id does nothing`() {
+        RecentReposService.addFolder("Keep")
+        assertDoesNotThrow { RecentReposService.removeFolder("no-such-id") }
+        assertEquals(1, RecentReposService.getFolders().size)
     }
 }
