@@ -1844,9 +1844,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         submoduleTreeModel.reload()
 
         if (expanded == null) {
-            // First load: expand everything. while-loop because rowCount grows as we expand.
-            var i = 0
-            while (i < submoduleTree.rowCount) { submoduleTree.expandRow(i); i++ }
+            // First load: leave all folders collapsed.
             submoduleFirstLoad = false
         } else {
             restoreExpandedSubmoduleFolders(expanded)
