@@ -189,7 +189,6 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         if (!busy) value = 0
     }
 
-    private val loadingBar    = miniBar()   // global, bottom of the tab
     private val graphBar      = miniBar()   // under the commit search bar
     private val branchesBar   = miniBar()   // bottom of Branches section
     private val submodulesBar = miniBar()   // bottom of Submodules section
@@ -291,7 +290,6 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         add(buildToolbar(), BorderLayout.NORTH)
         add(sideBarSplit,   BorderLayout.CENTER)
-        add(loadingBar,     BorderLayout.SOUTH)
 
         loadColumnWidths()
         // BLIT_SCROLL_MODE (the default) keeps a stale backing buffer after the card is
@@ -2032,9 +2030,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }.execute()
     }
 
-    private var loadingCount = 0
-    private fun showLoading() { if (++loadingCount == 1) loadingBar.setBusy(true) }
-    private fun hideLoading() { if (--loadingCount <= 0) { loadingCount = 0; loadingBar.setBusy(false) } }
+    // The global loading bar was removed in favour of per-section bars; these remain
+    // as no-ops so the (many) call sites stay valid without churn.
+    private fun showLoading() {}
+    private fun hideLoading() {}
 
     private fun updatePushCheckboxLabel() {
         val r = trackingRemote; val b = trackingBranchRef
