@@ -2210,23 +2210,51 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         // ── Uncommitted-changes virtual node ─────────────────────────────────
         if (hasUncommitted && localList.isNotEmpty()) {
-            val head = localList.firstOrNull { it.isCurrentHead } ?: localList.first()
+            val grey     = Color.GRAY
+            val head     = localList.firstOrNull { it.isCurrentHead } ?: localList.first()
+            val headIdx  = localList.indexOf(head).coerceAtLeast(0)
+            val headLane = head.x
+
             val virtual = Commit(UNCOMMITTED_HASH, this).apply {
                 prePopulate(listOf("", "", "", "", "", "Uncommitted changes"))
-                x     = head.x
+                x     = headLane
                 y     = -1
-                color = Color.GRAY
+                color = grey
                 refs  = head.refs                                    // move branch pills here
                 graphTopLines    = emptyList()
-                graphBottomLines = listOf(head.x to Color.GRAY)
+                graphBottomLines = listOf(headLane to grey)
                 graphForkLines   = emptyList()
             }
-            head.refs          = emptyList()                         // pills moved to virtual
-            head.graphTopLines = head.graphTopLines + (head.x to Color.GRAY)
-            // Place directly ABOVE the current HEAD commit (not at the very top) so the
-            // grey line connects them like a branch — correct when HEAD is behind origin.
-            val headIdx = localList.indexOf(head).coerceAtLeast(0)
-            localList.add(headIdx, virtual)
+            head.refs = emptyList()                                  // pills moved to virtual
+
+            if (headIdx == 0) {
+                // HEAD is already the top commit — just sit directly above it.
+                head.graphTopLines = head.graphTopLines + (headLane to grey)
+            } else {
+                // HEAD is behind origin: shift the commits above HEAD one lane to the
+                // right, freeing headLane for a grey connector that runs from the
+                // (top-of-list) uncommitted node straight down to HEAD. The origin
+                // chain then merges into HEAD from its shifted lane.
+                fun shift(lines: List<Pair<Int, Color>>) =
+                    lines.map { (l, c) -> (if (l >= headLane) l + 1 else l) to c }
+                for (i in 0 until headIdx) {
+                    val c = localList[i]
+                    if (c.x >= headLane) c.x += 1
+                    c.graphTopLines    = shift(c.graphTopLines)
+                    c.graphBottomLines = shift(c.graphBottomLines)
+                    c.graphForkLines   = shift(c.graphForkLines)
+                    // Direct children of HEAD now fork down-left into headLane;
+                    // everyone else just lets the grey connector pass straight through.
+                    if (head in c.parents) {
+                        c.graphForkLines   = c.graphForkLines + (headLane to grey)
+                        c.graphBottomLines = c.graphBottomLines.filterNot { it.first == c.x }
+                    }
+                    c.graphTopLines    = c.graphTopLines    + (headLane to grey)
+                    c.graphBottomLines = c.graphBottomLines + (headLane to grey)
+                }
+                head.graphTopLines = head.graphTopLines + (headLane to grey)
+            }
+            localList.add(0, virtual)
         }
 
         return localList
