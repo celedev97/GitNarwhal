@@ -173,14 +173,27 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private lateinit var fileStatusItem: JButton
     private lateinit var historyItem:    JButton
 
-    // ── Bottom loading bar ────────────────────────────────────────────────────
-    private val loadingBar = JProgressBar().apply {
-        isIndeterminate  = true
-        isVisible        = false
-        preferredSize    = Dimension(0, 3)
-        isStringPainted  = false
-        border           = null
+    // ── Progress bars ─────────────────────────────────────────────────────────
+    // Always visible at 0% (so they never shift the layout); turn indeterminate while busy.
+    private fun miniBar() = JProgressBar().apply {
+        isIndeterminate = false
+        value           = 0
+        isStringPainted = false
+        border          = null
+        preferredSize   = Dimension(0, 3)
+        maximumSize     = Dimension(Int.MAX_VALUE, 3)
     }
+
+    private fun JProgressBar.setBusy(busy: Boolean) {
+        isIndeterminate = busy
+        if (!busy) value = 0
+    }
+
+    private val loadingBar    = miniBar()   // global, bottom of the tab
+    private val graphBar      = miniBar()   // under the commit search bar
+    private val branchesBar   = miniBar()   // bottom of Branches section
+    private val submodulesBar = miniBar()   // bottom of Submodules section
+    private val stashesBar    = miniBar()   // bottom of Stashes section
 
     // ── Blame button (in diff top bar) ────────────────────────────────────────
     private val blameBtn      = JButton("Blame").apply { isVisible = false }
@@ -252,8 +265,13 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             add(searchFilterCombo, BorderLayout.WEST)
             add(searchField,       BorderLayout.CENTER)
         }
+        val searchAndBar = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(searchBar, BorderLayout.NORTH)
+            add(graphBar,  BorderLayout.SOUTH)
+        }
         val tableWithSearch = JPanel(BorderLayout()).apply {
-            add(searchBar,        BorderLayout.NORTH)
+            add(searchAndBar,     BorderLayout.NORTH)
             add(commitScrollPane, BorderLayout.CENTER)
         }
         historyView = JSplitPane(
@@ -1395,6 +1413,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             border = BorderFactory.createTitledBorder("Branches")
         }
         branchesPanel.add(JScrollPane(branchTree), BorderLayout.CENTER)
+        branchesPanel.add(branchesBar, BorderLayout.SOUTH)
 
         // SUBMODULES section (shown/hidden dynamically)
         submodulesPanel = buildSubmodulesPanel()
@@ -1404,6 +1423,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             border = BorderFactory.createTitledBorder("Stashes")
         }
         stashesPanel.add(JScrollPane(stashList), BorderLayout.CENTER)
+        stashesPanel.add(stashesBar, BorderLayout.SOUTH)
 
         // Inner split: Branches ↕ Submodules
         // dividerSize stays at default — we control visibility via dividerLocation only.
@@ -1730,6 +1750,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     fun refresh() {
         showLoading()
+        graphBar.setBusy(true); branchesBar.setBusy(true); stashesBar.setBusy(true)
         val window = displayedCommits.coerceAtLeast(COMMIT_PAGE)
         object : SwingWorker<RefreshSnapshot, Void>() {
             override fun doInBackground(): RefreshSnapshot {
@@ -1772,14 +1793,21 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 }
             }
             override fun done() {
-                val snap = try { get() } catch (e: Exception) { hideLoading(); return }
+                val snap = try { get() } catch (e: Exception) {
+                    hideLoading()
+                    graphBar.setBusy(false); branchesBar.setBusy(false); stashesBar.setBusy(false)
+                    return
+                }
                 if (snap.branchOk) applyBranches(snap.branchesOut)
+                branchesBar.setBusy(false)
                 if (snap.logOk) {
                     fullLogOutput     = snap.logOut
                     hasUncommittedNow = snap.modifiedCount > 0
                     applyCommitList(snap.commits)
                 }
+                graphBar.setBusy(false)
                 applyStashes(snap.stashOut)
+                stashesBar.setBusy(false)
                 applyFileStatus(snap.statusOut)
                 commitBtn.badge = snap.modifiedCount
                 pullBtn.badge   = snap.unpulledCount
@@ -1925,6 +1953,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             }
         })
         panel.add(JScrollPane(submoduleTree), BorderLayout.CENTER)
+        panel.add(submodulesBar, BorderLayout.SOUTH)
         return panel
     }
 
@@ -1992,9 +2021,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     /** Fetches submodule status in background WITHOUT blocking or showing the loading bar. */
     private fun refreshSubmodulesAsync() {
+        submodulesBar.setBusy(true)
         object : SwingWorker<String, Void>() {
             override fun doInBackground() = git.submoduleStatus().output
             override fun done() {
+                submodulesBar.setBusy(false)
                 val out = try { get() } catch (_: Exception) { return }
                 applySubmodules(out)
             }
@@ -2002,8 +2033,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     private var loadingCount = 0
-    private fun showLoading() { if (++loadingCount == 1) loadingBar.isVisible = true }
-    private fun hideLoading() { if (--loadingCount <= 0) { loadingCount = 0; loadingBar.isVisible = false } }
+    private fun showLoading() { if (++loadingCount == 1) loadingBar.setBusy(true) }
+    private fun hideLoading() { if (--loadingCount <= 0) { loadingCount = 0; loadingBar.setBusy(false) } }
 
     private fun updatePushCheckboxLabel() {
         val r = trackingRemote; val b = trackingBranchRef
@@ -2014,12 +2045,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     fun refreshBranches() {
         showLoading()
+        branchesBar.setBusy(true)
         object : SwingWorker<String?, Void>() {
             override fun doInBackground(): String? {
                 val r = git.branches()
                 return if (r.success) r.output else null
             }
             override fun done() {
+                branchesBar.setBusy(false)
                 val out = try { get() } catch (e: Exception) { hideLoading(); null } ?: run { hideLoading(); return }
                 applyBranches(out)
                 hideLoading()
@@ -2029,9 +2062,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     fun refreshStashes() {
         showLoading()
+        stashesBar.setBusy(true)
         object : SwingWorker<String, Void>() {
             override fun doInBackground() = git.stashList().output
             override fun done() {
+                stashesBar.setBusy(false)
                 val out = try { get() } catch (e: Exception) { hideLoading(); "" }
                 applyStashes(out)
                 hideLoading()
@@ -2314,13 +2349,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         loadingMoreCommits = true
         showLoading()
+        graphBar.setBusy(true)
         val newWindow = displayedCommits + COMMIT_PAGE
         val raw = fullLogOutput
         val unc = hasUncommittedNow
         object : SwingWorker<List<Commit>, Void>() {
             override fun doInBackground() = layoutCommitGraph(raw, unc, newWindow)
             override fun done() {
-                hideLoading(); loadingMoreCommits = false
+                hideLoading(); graphBar.setBusy(false); loadingMoreCommits = false
                 val commits = try { get() } catch (_: Exception) { return }
                 displayedCommits = newWindow
                 val scrollPos = commitScrollPane.verticalScrollBar.value
@@ -2418,6 +2454,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private fun showFileHistory(filePath: String) {
         switchCard(CARD_HISTORY)
         showLoading()
+        graphBar.setBusy(true)
         object : SwingWorker<List<Commit>?, Void>() {
             override fun doInBackground(): List<Commit>? {
                 val logOut = git.logFile(filePath).output
@@ -2425,7 +2462,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 return layoutCommitGraph(logOut, false)   // heavy work off the EDT
             }
             override fun done() {
-                hideLoading()
+                hideLoading(); graphBar.setBusy(false)
                 val commits = try { get() } catch (_: Exception) { return }
                 if (commits == null) { showError("File History", "No history found for: $filePath"); return }
                 applyCommitList(commits)
