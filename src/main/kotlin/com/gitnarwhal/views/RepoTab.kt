@@ -61,7 +61,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         override fun getValueAt(row: Int, col: Int): Any {
             val c = filteredCommits[row]
             return when (col) {
-                0 -> c; 1 -> c; 2 -> c.committerDate; 3 -> c.committer; 4 -> c.hash
+                0 -> c; 1 -> c; 2 -> c.committerDate; 3 -> c.committer
+                4 -> if (c.hash == UNCOMMITTED_HASH) "" else c.hash
                 else -> ""
             }
         }
@@ -168,6 +169,10 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private lateinit var branchSubSplit:    JSplitPane  // branches ↕ submodules
     private lateinit var mainSidebarSplit:  JSplitPane  // (branches+sub) ↕ stashes
 
+    // ── Workspace nav buttons (File Status / History) ──────────────────────────
+    private lateinit var fileStatusItem: JButton
+    private lateinit var historyItem:    JButton
+
     // ── Bottom loading bar ────────────────────────────────────────────────────
     private val loadingBar = JProgressBar().apply {
         isIndeterminate  = true
@@ -189,9 +194,13 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private val conflictAbortBtn    = JButton("Abort")
     private val conflictBanner      = JPanel()
 
-    // ── Main content card layout (History / File Status) ──────────────────────
-    private val mainCards     = CardLayout()
-    private val mainContainer = JPanel(mainCards)
+    // ── Main content (History / File Status) ──────────────────────────────────
+    // Plain BorderLayout swap instead of CardLayout: CardLayout left the heavy,
+    // non-opaque history view painting through the file-status card. We mount
+    // exactly one panel at a time so bleed-through is structurally impossible.
+    private val mainContainer = JPanel(BorderLayout())
+    private lateinit var historyView:     JComponent
+    private lateinit var fileStatusPanel: JComponent
 
     private val sideBarSplit: JSplitPane
     private var sideBarOpen            = true
@@ -247,15 +256,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             add(searchBar,        BorderLayout.NORTH)
             add(commitScrollPane, BorderLayout.CENTER)
         }
-        val historyView = JSplitPane(
+        historyView = JSplitPane(
             JSplitPane.VERTICAL_SPLIT,
             tableWithSearch,
             commitDetailSplit
         ).apply { resizeWeight = 0.7; dividerLocation = 400 }
+        fileStatusPanel = buildFileStatusPanel()
 
-        mainContainer.add(historyView,         CARD_HISTORY)
-        mainContainer.add(buildFileStatusPanel(), CARD_FILE_STATUS)
-        mainCards.show(mainContainer, CARD_HISTORY)
+        mainContainer.add(historyView, BorderLayout.CENTER)
 
         sideBarSplit = JSplitPane(
             JSplitPane.HORIZONTAL_SPLIT,
@@ -268,9 +276,17 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         add(loadingBar,     BorderLayout.SOUTH)
 
         loadColumnWidths()
+        // BLIT_SCROLL_MODE (the default) keeps a stale backing buffer after the card is
+        // remounted, so the table only repaints once a scroll invalidates it. SIMPLE mode
+        // always repaints the visible area — fixes "needs resize+scroll to redraw".
+        commitScrollPane.viewport.scrollMode = javax.swing.JViewport.SIMPLE_SCROLL_MODE
+        commitDiffScroll.viewport.scrollMode = javax.swing.JViewport.SIMPLE_SCROLL_MODE
+        diffScrollPane.viewport.scrollMode   = javax.swing.JViewport.SIMPLE_SCROLL_MODE
         commitScrollPane.viewport.addComponentListener(object : ComponentAdapter() {
             override fun componentResized(e: ComponentEvent) = updateDescriptionColumnWidth()
         })
+        // Load more commits as the user scrolls near the bottom (windowed history)
+        commitScrollPane.verticalScrollBar.addAdjustmentListener { maybeLoadMoreCommits() }
         commitTable.tableHeader.addMouseListener(object : MouseAdapter() {
             override fun mouseReleased(e: MouseEvent) = saveColumnWidths()
         })
@@ -280,8 +296,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 val row = commitTable.selectedRow
                 if (row in filteredCommits.indices) {
                     val c = filteredCommits[row]
-                    if (c.hash == UNCOMMITTED_HASH) showFileStatus()
-                    else {
+                    if (c.hash == UNCOMMITTED_HASH) {
+                        // Only a real user click on the uncommitted node jumps to File Status.
+                        // Programmatic selection during refresh must NOT yank the view around.
+                        if (!suppressCommitSelection) showFileStatus()
+                    } else {
                         currentCommit = c
                         commitDataPanel.showCommit(c)
                         loadCommitFiles(c)
@@ -294,8 +313,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         stashList.addListSelectionListener { e ->
             if (e.valueIsAdjusting) return@addListSelectionListener
             val idx = stashList.selectedIndex.takeIf { it >= 0 } ?: return@addListSelectionListener
-            mainCards.show(mainContainer, CARD_HISTORY)
-            mainContainer.revalidate(); mainContainer.repaint()
+            switchCard(CARD_HISTORY)
             object : SwingWorker<String, Void>() {
                 override fun doInBackground() = git.stashDiff(idx).output
                 override fun done() {
@@ -323,6 +341,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         private const val CARD_FILE_STATUS = "fileStatus"
 
         const val UNCOMMITTED_HASH = "0000000000000000000000000000000000000000"
+
+        // History is loaded in windows of this many commits; more are appended on scroll.
+        private const val COMMIT_PAGE = 300
 
         val GRAPH_PALETTE = listOf(
             Color(0x4F, 0xC3, 0xF7),  // sky blue
@@ -824,10 +845,57 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     // ── Diff display ──────────────────────────────────────────────────────────
 
-    private fun showFileStatus() {
-        mainCards.show(mainContainer, CARD_FILE_STATUS)
+    private var currentCard = CARD_HISTORY
+    /** True while applyCommitList sets the selection programmatically, so the
+     *  selection listener doesn't auto-switch the view to File Status. */
+    private var suppressCommitSelection = false
+
+    // ── Windowed history (avoids huge JTable that breaks Java2D rendering) ─────
+    private var fullLogOutput   = ""    // raw git-log output (all commits)
+    private var displayedCommits = COMMIT_PAGE
+    private var hasUncommittedNow = false
+    @Volatile private var loadingMoreCommits = false
+
+    /**
+     * Mounts exactly one of [historyView] / [fileStatusPanel] into [mainContainer].
+     *
+     * Replaces CardLayout, which left the heavy non-opaque history view painting
+     * through the file-status card. Physically removing the inactive panel makes
+     * bleed-through impossible.
+     */
+    private fun switchCard(card: String) {
+        currentCard = card
+        val target = if (card == CARD_HISTORY) historyView else fileStatusPanel
+        mainContainer.removeAll()
+        mainContainer.add(target, BorderLayout.CENTER)
+        updateWorkspaceSelection()
         mainContainer.revalidate()
         mainContainer.repaint()
+        // The freshly-mounted nested JSplitPanes don't fully re-layout/paint until the
+        // window is resized. Replicate a resize in software: validate the whole root
+        // pane and mark it completely dirty so the OS does a full repaint.
+        SwingUtilities.invokeLater {
+            val root = SwingUtilities.getRootPane(this) ?: return@invokeLater
+            root.validate()
+            javax.swing.RepaintManager.currentManager(root).markCompletelyDirty(root)
+            root.repaint()
+        }
+    }
+
+    private fun updateWorkspaceSelection() {
+        if (!::fileStatusItem.isInitialized) return
+        val accent = UIManager.getColor("Component.accentColor") ?: Color(0x3E_C4_BD)
+        val normal = UIManager.getColor("Label.foreground") ?: Color.LIGHT_GRAY
+        fileStatusItem.font = fileStatusItem.font.deriveFont(
+            if (currentCard == CARD_FILE_STATUS) Font.BOLD else Font.PLAIN)
+        historyItem.font = historyItem.font.deriveFont(
+            if (currentCard == CARD_HISTORY) Font.BOLD else Font.PLAIN)
+        fileStatusItem.foreground = if (currentCard == CARD_FILE_STATUS) accent else normal
+        historyItem.foreground    = if (currentCard == CARD_HISTORY)     accent else normal
+    }
+
+    private fun showFileStatus() {
+        switchCard(CARD_FILE_STATUS)
         refreshAuthorLabel()
         refreshFileStatus()
     }
@@ -840,9 +908,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 if (hash.isBlank()) return
                 val row = commitList.indexOfFirst { it.hash.startsWith(hash) || hash.startsWith(it.hash) }
                 if (row < 0) return
-                mainCards.show(mainContainer, CARD_HISTORY)
-                mainContainer.revalidate()
-                mainContainer.repaint()
+                switchCard(CARD_HISTORY)
                 commitTable.selectionModel.setSelectionInterval(row, row)
                 commitTable.scrollRectToVisible(commitTable.getCellRect(row, 0, true))
             }
@@ -1310,14 +1376,15 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             border = BorderFactory.createEmptyBorder(4, 0, 4, 0)
         }
         workspacePanel.add(sidebarSectionHeader("WORKSPACE"))
-        workspacePanel.add(workspaceItem("File Status", MaterialDesign.MDI_FILE_DOCUMENT) {
+        fileStatusItem = workspaceItem("File Status", MaterialDesign.MDI_FILE_DOCUMENT) {
             showFileStatus()
-        })
-        workspacePanel.add(workspaceItem("History", MaterialDesign.MDI_HISTORY) {
-            mainCards.show(mainContainer, CARD_HISTORY)
-            mainContainer.revalidate()
-            mainContainer.repaint()
-        })
+        }
+        historyItem = workspaceItem("History", MaterialDesign.MDI_HISTORY) {
+            showHistoryView()
+        }
+        workspacePanel.add(fileStatusItem)
+        workspacePanel.add(historyItem)
+        updateWorkspaceSelection()
 
         // BRANCHES section
         val branchesPanel = JPanel(BorderLayout()).apply {
@@ -1652,12 +1719,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val unpulledCount: Int,
         val unpushedCount: Int,
         val currentBranch: String,
-        val tracking: Pair<String, String>?   // remote to trackingBranch
+        val tracking: Pair<String, String>?,  // remote to trackingBranch
+        val commits: List<Commit>              // graph pre-computed off the EDT
         // submoduleStatus is intentionally NOT here — it runs in a separate lazy task
     )
 
     fun refresh() {
         showLoading()
+        val window = displayedCommits.coerceAtLeast(COMMIT_PAGE)
         object : SwingWorker<RefreshSnapshot, Void>() {
             override fun doInBackground(): RefreshSnapshot {
                 val pool = java.util.concurrent.Executors.newCachedThreadPool()
@@ -1681,13 +1750,18 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     val unpushed   = fUnpushed.get()
                     val (branch, tracking) = fBranchTrack.get()
                     val modified   = status.output.lines().count { it.length > 2 && !it.startsWith("##") }
+                    // Heavy graph layout computed HERE (background), not on the EDT.
+                    // Only the first [window] commits are laid out — keeps the JTable small
+                    // enough that Java2D renders it reliably; more load on scroll.
+                    val commits = if (log_.success) layoutCommitGraph(log_.output, modified > 0, window)
+                                  else emptyList()
 
                     RefreshSnapshot(
                         branches.output, branches.success, log_.output, log_.success,
                         if (stash.success) stash.output else "",
                         status.output,
                         modified, unpulled, unpushed,
-                        branch, tracking
+                        branch, tracking, commits
                     )
                 } finally {
                     pool.shutdown()
@@ -1696,7 +1770,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             override fun done() {
                 val snap = try { get() } catch (e: Exception) { hideLoading(); return }
                 if (snap.branchOk) applyBranches(snap.branchesOut)
-                if (snap.logOk)    applyCommits(snap.logOut, snap.modifiedCount > 0)
+                if (snap.logOk) {
+                    fullLogOutput     = snap.logOut
+                    hasUncommittedNow = snap.modifiedCount > 0
+                    applyCommitList(snap.commits)
+                }
                 applyStashes(snap.stashOut)
                 applyFileStatus(snap.statusOut)
                 commitBtn.badge = snap.modifiedCount
@@ -1753,13 +1831,57 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
     }
 
+    private var submoduleFirstLoad = true
+
     private fun applySubmoduleFilter() {
+        // Preserve the user's expand/collapse state across reloads
+        val expanded = if (submoduleFirstLoad) null else captureExpandedSubmoduleFolders()
+
         submoduleRoot.removeAllChildren()
         val visible = if (!submoduleOnlyModifiedCk.isSelected) allSubmodules
                       else allSubmodules.filter { it.isDirty }
         visible.forEach { insertSubmoduleNode(it) }
         submoduleTreeModel.reload()
-        for (i in 0 until submoduleTree.rowCount) submoduleTree.expandRow(i)
+
+        if (expanded == null) {
+            // First load: expand everything. while-loop because rowCount grows as we expand.
+            var i = 0
+            while (i < submoduleTree.rowCount) { submoduleTree.expandRow(i); i++ }
+            submoduleFirstLoad = false
+        } else {
+            restoreExpandedSubmoduleFolders(expanded)
+        }
+    }
+
+    /** Folder-path string (slash-joined segment names) of a folder node. */
+    private fun submoduleFolderPath(node: DefaultMutableTreeNode): String =
+        node.path.drop(1).mapNotNull { (it as? DefaultMutableTreeNode)?.userObject as? String }
+            .joinToString("/")
+
+    private fun captureExpandedSubmoduleFolders(): Set<String> {
+        val out = mutableSetOf<String>()
+        for (i in 0 until submoduleTree.rowCount) {
+            if (!submoduleTree.isExpanded(i)) continue
+            val node = submoduleTree.getPathForRow(i)?.lastPathComponent as? DefaultMutableTreeNode ?: continue
+            if (node.userObject is String) out += submoduleFolderPath(node)
+        }
+        return out
+    }
+
+    private fun restoreExpandedSubmoduleFolders(paths: Set<String>) {
+        val queue = ArrayDeque<DefaultMutableTreeNode>()
+        queue.add(submoduleRoot)
+        while (queue.isNotEmpty()) {
+            val n = queue.removeFirst()
+            for (c in n.children().toList()) {
+                val child = c as? DefaultMutableTreeNode ?: continue
+                if (child.userObject is String) {
+                    if (submoduleFolderPath(child) in paths)
+                        submoduleTree.expandPath(javax.swing.tree.TreePath(child.path))
+                    queue.add(child)
+                }
+            }
+        }
     }
 
     /** Inserts a submodule into the tree, creating intermediate folder nodes as needed. */
@@ -1956,14 +2078,21 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         current.add(DefaultMutableTreeNode(BranchInfo(path, segs.last(), active, tracking, ahead, behind)))
     }
 
-    private fun applyCommits(logOutput: String, hasUncommitted: Boolean = false) {
+    /**
+     * Parses git-log output and computes the full commit graph (topological order,
+     * lane assignment, line geometry). Pure data work — NO Swing access — so it runs
+     * on a background thread. Hand the result to [applyCommitList] on the EDT.
+     */
+    private fun layoutCommitGraph(logOutput: String, hasUncommitted: Boolean = false, limit: Int = 0): List<Commit> {
         val localMap      = LinkedHashMap<String, Commit>()
         val localList     = mutableListOf<Commit>()
         val parentHashMap = mutableMapOf<String, List<String>>()  // hash → parent hashes (for pass 2)
+        var parsed = 0   // number of commits accepted so far (for windowed loading)
         for (record in logOutput.split('')) {
             val f = record.split('')
             if (f.size < 8) continue
             val hash = f[0].trim(); if (hash.isBlank()) continue
+            if (limit in 1..parsed) break   // window full — stop parsing
             // Pass 1: populate commit data; parent linking deferred to pass 2
             val commit = localMap.getOrPut(hash) { Commit(hash, this) }
             commit.prePopulate(listOf(f[2], f[3], f[4], f[5], f[6], f[7]))
@@ -1973,6 +2102,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 val t = p.trim(); t.startsWith("HEAD -> ") || t == "HEAD"
             }
             parentHashMap[hash] = f[1].split(" ").filter { it.isNotBlank() }
+            parsed++
         }
         // Pass 2: link parents/children — ALL commits now in localMap, lookups succeed
         for ((h, parentHashes) in parentHashMap) {
@@ -1983,12 +2113,29 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             }
         }
         // ── Topological sort (post-order DFS, newest first → y=0 = top row) ──
+        // Iterative (explicit stack) to avoid StackOverflowError on deep histories.
         var y = 0
-        fun dfs(c: Commit) {
-            if (!c.explored) { c.explored = true; c.childs.forEach { dfs(it) }; c.y = y++ }
-        }
+        val visiting = HashSet<String>()
+        val stack    = ArrayDeque<Pair<Commit, Boolean>>()
         localMap.values.sortedBy { runCatching { -it.committerTimeStamp.toLong() }.getOrDefault(0L) }
-            .forEach { dfs(it) }
+            .forEach { root ->
+                if (root.explored) return@forEach
+                stack.addLast(root to false)
+                while (stack.isNotEmpty()) {
+                    val (c, processed) = stack.removeLast()
+                    if (processed) {
+                        if (!c.explored) { c.explored = true; c.y = y++ }
+                        continue
+                    }
+                    if (c.explored || c.hash in visiting) continue
+                    visiting.add(c.hash)
+                    stack.addLast(c to true)
+                    for (i in c.childs.indices.reversed()) {
+                        val child = c.childs[i]
+                        if (!child.explored && child.hash !in visiting) stack.addLast(child to false)
+                    }
+                }
+            }
         localMap.values.sortedBy { it.y }.forEach { localList.add(it) }
 
         // ── Lane (x) assignment ───────────────────────────────────────────────
@@ -2076,9 +2223,20 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             }
             head.refs          = emptyList()                         // pills moved to virtual
             head.graphTopLines = head.graphTopLines + (head.x to Color.GRAY)
-            localList.add(0, virtual)
+            // Place directly ABOVE the current HEAD commit (not at the very top) so the
+            // grey line connects them like a branch — correct when HEAD is behind origin.
+            val headIdx = localList.indexOf(head).coerceAtLeast(0)
+            localList.add(headIdx, virtual)
         }
 
+        return localList
+    }
+
+    /**
+     * EDT: pushes a pre-computed commit list (from [layoutCommitGraph]) into the table.
+     * [keepView] = true when appending more commits on scroll — keep selection/scroll put.
+     */
+    private fun applyCommitList(localList: List<Commit>, keepView: Boolean = false) {
         // ── Apply to table ────────────────────────────────────────────────────
         val previousHash = filteredCommits.getOrNull(commitTable.selectedRow)?.hash
         commitList.clear(); commitList.addAll(localList)
@@ -2094,9 +2252,52 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             filteredCommits.indexOfFirst { it.hash == previousHash }.takeIf { it >= 0 } ?: 0
         else 0
         if (filteredCommits.isNotEmpty()) {
-            commitTable.selectionModel.setSelectionInterval(targetRow, targetRow)
-            commitTable.scrollRectToVisible(commitTable.getCellRect(targetRow, 0, true))
+            // Suppress the listener's File Status auto-switch for this programmatic selection
+            suppressCommitSelection = true
+            try {
+                commitTable.selectionModel.setSelectionInterval(targetRow, targetRow)
+                if (!keepView) commitTable.scrollRectToVisible(commitTable.getCellRect(targetRow, 0, true))
+            } finally {
+                suppressCommitSelection = false
+            }
         }
+
+        // Force a layout + repaint after the model swap — otherwise the freshly
+        // populated table sometimes doesn't draw until the window is resized.
+        SwingUtilities.invokeLater {
+            commitTable.revalidate()
+            commitScrollPane.revalidate()
+            commitScrollPane.repaint()
+        }
+    }
+
+    /** Total commits available in the loaded log (each record starts with RS = ). */
+    private fun totalCommitRecords() = fullLogOutput.count { it == '' }
+
+    /** Called on scroll: if near the bottom and more commits exist, append the next page. */
+    private fun maybeLoadMoreCommits() {
+        if (loadingMoreCommits || fullLogOutput.isEmpty() || currentCard != CARD_HISTORY) return
+        val sb = commitScrollPane.verticalScrollBar
+        val nearBottom = sb.value + sb.visibleAmount >= sb.maximum - 50 * commitTable.rowHeight
+        if (!nearBottom) return
+        if (displayedCommits >= totalCommitRecords()) return  // everything loaded
+
+        loadingMoreCommits = true
+        showLoading()
+        val newWindow = displayedCommits + COMMIT_PAGE
+        val raw = fullLogOutput
+        val unc = hasUncommittedNow
+        object : SwingWorker<List<Commit>, Void>() {
+            override fun doInBackground() = layoutCommitGraph(raw, unc, newWindow)
+            override fun done() {
+                hideLoading(); loadingMoreCommits = false
+                val commits = try { get() } catch (_: Exception) { return }
+                displayedCommits = newWindow
+                val scrollPos = commitScrollPane.verticalScrollBar.value
+                applyCommitList(commits, keepView = true)
+                SwingUtilities.invokeLater { commitScrollPane.verticalScrollBar.value = scrollPos }
+            }
+        }.execute()
     }
 
     // ── Column width persistence ──────────────────────────────────────────────
@@ -2180,23 +2381,24 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     // ── Misc helpers ──────────────────────────────────────────────────────────
 
-    fun showHistoryView() {
-        mainCards.show(mainContainer, CARD_HISTORY)
-        mainContainer.revalidate()
-        mainContainer.repaint()
-    }
+    fun showHistoryView() = switchCard(CARD_HISTORY)
     fun showFileStatusView() = showFileStatus()
     fun openSettings()       { RepoSettingsDialog(git, SwingUtilities.getWindowAncestor(this)).isVisible = true }
 
     private fun showFileHistory(filePath: String) {
-        mainCards.show(mainContainer, CARD_HISTORY)
-        mainContainer.revalidate(); mainContainer.repaint()
-        object : SwingWorker<String, Void>() {
-            override fun doInBackground() = git.logFile(filePath).output
+        switchCard(CARD_HISTORY)
+        showLoading()
+        object : SwingWorker<List<Commit>?, Void>() {
+            override fun doInBackground(): List<Commit>? {
+                val logOut = git.logFile(filePath).output
+                if (logOut.isBlank()) return null
+                return layoutCommitGraph(logOut, false)   // heavy work off the EDT
+            }
             override fun done() {
-                val logOut = try { get() } catch (_: Exception) { return }
-                if (logOut.isBlank()) { showError("File History", "No history found for: $filePath"); return }
-                applyCommits(logOut, false)
+                hideLoading()
+                val commits = try { get() } catch (_: Exception) { return }
+                if (commits == null) { showError("File History", "No history found for: $filePath"); return }
+                applyCommitList(commits)
                 searchField.text = ""
             }
         }.execute()
@@ -2284,7 +2486,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     fun selectCommit(hash: String) {
         val idx = filteredCommits.indexOfFirst { it.hash == hash }
         if (idx >= 0) {
-            mainCards.show(mainContainer, CARD_HISTORY)
+            switchCard(CARD_HISTORY)
             commitTable.selectionModel.setSelectionInterval(idx, idx)
             commitTable.scrollRectToVisible(commitTable.getCellRect(idx, 0, true))
         }

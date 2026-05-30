@@ -89,9 +89,15 @@ open class GitShow {
                     .joinToString("\n")
         } else {
             var output = commitShowData!![linePositions[property.name]!!]
-            if (property.name.contains("Date") && property.name != "committerTimeStamp") {
-                val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-                output = formatter.format(Date.from(Instant.ofEpochSecond(output.toLong())))
+            // Empty fields (e.g. the synthetic "Uncommitted changes" node) must not be
+            // date-parsed: "".toLong() throws NumberFormatException during cell painting,
+            // which aborts the whole table repaint and leaves the graph half-drawn.
+            if (property.name.contains("Date") && property.name != "committerTimeStamp" && output.isNotBlank()) {
+                val epoch = output.toLongOrNull()
+                if (epoch != null) {
+                    val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                    output = formatter.format(Date.from(Instant.ofEpochSecond(epoch)))
+                }
             }
             return output
         }
