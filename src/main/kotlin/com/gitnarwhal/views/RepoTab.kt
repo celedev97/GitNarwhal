@@ -325,6 +325,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
 
         installCommitContextMenu()
+        // Re-apply the nav highlight after the L&F has finished installing (it resets
+        // button fonts during UI install, wiping the bold set during construction).
+        SwingUtilities.invokeLater { updateWorkspaceSelection() }
         // NOTE: refresh() is NOT called here — MainView calls it when the tab is first shown.
     }
 
@@ -892,6 +895,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             if (currentCard == CARD_HISTORY) Font.BOLD else Font.PLAIN)
         fileStatusItem.foreground = if (currentCard == CARD_FILE_STATUS) accent else normal
         historyItem.foreground    = if (currentCard == CARD_HISTORY)     accent else normal
+        fileStatusItem.repaint(); historyItem.repaint()
     }
 
     private fun showFileStatus() {
@@ -2218,12 +2222,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 x     = headLane
                 y     = -1
                 color = grey
-                refs  = head.refs                                    // move branch pills here
+                refs  = emptyList()                                  // no branch pills on the working-copy node
                 graphTopLines    = emptyList()
                 graphBottomLines = listOf(headLane to grey)
                 graphForkLines   = emptyList()
             }
-            head.refs = emptyList()                                  // pills moved to virtual
+            // branch pills stay on HEAD (head.refs left untouched)
 
             if (headIdx == 0) {
                 // HEAD is already the top commit — just sit directly above it.
