@@ -174,16 +174,34 @@ class MainView : JPanel(BorderLayout()) {
 
     fun closeTab(component: JPanel) {
         val idx = tabPane.indexOfComponent(component)
-        if (idx >= 0) {
+        if (idx < 0) return
+        val wasSelected = tabPane.selectedIndex == idx
+
+        // Suppress the ChangeListener: removing the tab transiently lands selection on the
+        // "+" sentinel, which would otherwise auto-spawn a new Add/Clone tab.
+        suppressTabChange = true
+        try {
             tabPane.removeTabAt(idx)
             if (component is RepoTab) {
                 Settings.openTabs.removeAll { (it as JSONObject).getString("path") == component.path }
                 Settings.save()
             }
-            // If no real tabs remain, open a fresh Add/Clone tab
-            val realCount = (0 until tabPane.tabCount).count { tabPane.getTitleAt(it) != PLUS_TITLE }
-            if (realCount == 0) addNewCloneTab()
+
+            val realIdxs = (0 until tabPane.tabCount).filter { tabPane.getTitleAt(it) != PLUS_TITLE }
+            if (realIdxs.isEmpty()) {
+                // Nothing left but "+": open a fresh Add/Clone tab.
+                addNewCloneTab()
+            } else if (wasSelected && tabPane.getTitleAt(tabPane.selectedIndex) == PLUS_TITLE) {
+                // We closed the rightmost real tab; selection fell onto "+". Land on the
+                // nearest remaining real tab instead.
+                tabPane.selectedIndex = realIdxs.last()
+            }
+        } finally {
+            suppressTabChange = false
         }
+
+        // Listener was suppressed during the swap — load data for the now-current tab.
+        (tabPane.selectedComponent as? RepoTab)?.onTabSelected()
     }
 
     private fun moveTab(fromIndex: Int, toIndex: Int) {

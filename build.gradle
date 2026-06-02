@@ -87,6 +87,9 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    // Isolate persistence: tests must never touch the developer's real ~/.gitnarwhal.json.
+    systemProperty "gitnarwhal.configFile",
+        layout.buildDirectory.file("test-gitnarwhal.json").get().asFile.absolutePath
     finalizedBy jacocoTestReport
 }
 

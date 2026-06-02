@@ -10,7 +10,10 @@ import kotlin.reflect.KProperty
 import kotlin.reflect.full.memberProperties
 
 //TODO: discover if you can write this in a better way, the fact that you have a class constant outside of the class it's horrible
-private val CONFIG = System.getProperty("user.home") + "/.gitnarwhal.json"
+// `gitnarwhal.configFile` lets tests redirect persistence to a throwaway file so the
+// suite never clobbers the user's real ~/.gitnarwhal.json (open tabs, recent repos…).
+private val CONFIG = System.getProperty("gitnarwhal.configFile")
+    ?: (System.getProperty("user.home") + "/.gitnarwhal.json")
 private val settingsJSON = if(File(CONFIG).exists()) Files.readString(Path.of(CONFIG)) else "{}";
 
 object Settings : JSONObject(settingsJSON) {
