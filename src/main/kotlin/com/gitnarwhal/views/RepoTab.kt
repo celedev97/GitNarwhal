@@ -101,7 +101,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private var isHeadDetached     = false
 
     // ── Submodules ────────────────────────────────────────────────────────────
-    private data class SubmoduleInfo(
+    internal data class SubmoduleInfo(
         val path: String, val name: String, val hash: String,
         // isDirty       = uncommitted changes in the submodule's working tree (user should commit)
         // differentCommit = checked-out commit differs from the one the superproject records
@@ -2004,7 +2004,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         return panel
     }
 
-    private inner class SubmoduleTreeRenderer : DefaultTreeCellRenderer() {
+    // Not `inner`: uses no RepoTab state, so it can be built & exercised in a headless test.
+    internal class SubmoduleTreeRenderer : DefaultTreeCellRenderer() {
         init { setLeafIcon(null); setOpenIcon(null); setClosedIcon(null) }
 
         // Dirty (uncommitted content → user should commit) is the loud state: amber + bold.
