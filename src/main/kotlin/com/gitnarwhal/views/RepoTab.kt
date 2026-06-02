@@ -103,8 +103,13 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     // ── Submodules ────────────────────────────────────────────────────────────
     private data class SubmoduleInfo(
         val path: String, val name: String, val hash: String,
-        val isDirty: Boolean, val isUninitialized: Boolean
-    )
+        // isDirty       = uncommitted changes in the submodule's working tree (user should commit)
+        // differentCommit = checked-out commit differs from the one the superproject records
+        val isDirty: Boolean, val differentCommit: Boolean, val isUninitialized: Boolean
+    ) {
+        /** Submodule needs the user's attention (shown by the "Only modified" filter). */
+        val needsAttention get() = isDirty || differentCommit
+    }
     private val allSubmodules           = mutableListOf<SubmoduleInfo>()
     private val submoduleRoot           = DefaultMutableTreeNode("root")
     private val submoduleTreeModel      = DefaultTreeModel(submoduleRoot)
@@ -1851,8 +1856,16 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     // ── Submodule support ─────────────────────────────────────────────────────
 
-    private fun applySubmodules(output: String) {
-        allSubmodules.clear()
+    /**
+     * Parses `git submodule status` and, per submodule, probes its working tree for
+     * uncommitted changes. Runs on a background thread (spawns one git-status per
+     * submodule), so the result is handed to [applySubmodules] on the EDT.
+     *
+     * Flag meanings: ' ' clean · '+' checked-out commit differs from recorded · '-'
+     * uninitialized · 'U' merge conflicts.
+     */
+    private fun parseSubmodules(output: String): List<SubmoduleInfo> {
+        val subs = mutableListOf<SubmoduleInfo>()
         for (line in output.lines()) {
             if (line.isBlank()) continue
             val flag = line[0]
@@ -1864,14 +1877,22 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             val subPath   = remainder.substringBefore(" (").substringBefore("\t").trim()
             if (subPath.isBlank()) continue
             val name = subPath.substringAfterLast("/").ifBlank { subPath }
-            allSubmodules += SubmoduleInfo(
+            val uninitialized = flag == '-'
+            subs += SubmoduleInfo(
                 path            = subPath,
                 name            = name,
                 hash            = hash,
-                isDirty         = flag == '+' || flag == 'U',
-                isUninitialized = flag == '-'
+                isDirty         = if (uninitialized) false else git.submoduleDirty(subPath),
+                differentCommit = flag == '+' || flag == 'U',
+                isUninitialized = uninitialized
             )
         }
+        return subs
+    }
+
+    private fun applySubmodules(subs: List<SubmoduleInfo>) {
+        allSubmodules.clear()
+        allSubmodules.addAll(subs)
         val hadSubmodules = submodulesPanel.isVisible
         val hasSubmodules = allSubmodules.isNotEmpty()
         submodulesPanel.isVisible = hasSubmodules
@@ -1897,7 +1918,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         submoduleRoot.removeAllChildren()
         val visible = if (!submoduleOnlyModifiedCk.isSelected) allSubmodules
-                      else allSubmodules.filter { it.isDirty }
+                      else allSubmodules.filter { it.needsAttention }
         visible.forEach { insertSubmoduleNode(it) }
         submoduleTreeModel.reload()
 
@@ -1986,8 +2007,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private inner class SubmoduleTreeRenderer : DefaultTreeCellRenderer() {
         init { setLeafIcon(null); setOpenIcon(null); setClosedIcon(null) }
 
-        private val alertColor get() = Color(0xFF, 0xB3, 0x00)
-        private val mutedColor get() = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+        // Dirty (uncommitted content → user should commit) is the loud state: amber + bold.
+        private val dirtyColor  get() = Color(0xFF, 0xB3, 0x00)
+        // Different commit (gitlink mismatch) is informational: blue, normal weight.
+        private val commitColor get() = Color(0x4F, 0xC3, 0xF7)
+        private val mutedColor  get() = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
 
         override fun getTreeCellRendererComponent(
             tree: JTree, value: Any?, sel: Boolean, expanded: Boolean,
@@ -1998,35 +2022,50 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             when (val obj = node.userObject) {
                 is SubmoduleInfo -> {
                     text        = obj.name
-                    toolTipText = obj.path
                     when {
+                        // Dirty wins: it's the actionable state (commit inside the submodule).
                         obj.isDirty -> {
-                            icon       = FontIcon.of(MaterialDesign.MDI_ALERT, 14, alertColor)
-                            foreground = alertColor
-                            font       = font.deriveFont(Font.BOLD)
+                            icon        = FontIcon.of(MaterialDesign.MDI_PENCIL, 14, dirtyColor)
+                            foreground  = dirtyColor
+                            font        = font.deriveFont(Font.BOLD)
+                            toolTipText = "${obj.path} — uncommitted changes (commit needed)"
+                        }
+                        obj.differentCommit -> {
+                            icon        = FontIcon.of(MaterialDesign.MDI_SOURCE_FORK, 14, commitColor)
+                            foreground  = commitColor
+                            toolTipText = "${obj.path} — checked-out commit differs from the recorded one"
                         }
                         obj.isUninitialized -> {
-                            icon       = FontIcon.of(MaterialDesign.MDI_FOLDER_REMOVE, 14, mutedColor)
-                            foreground = mutedColor
-                            font       = font.deriveFont(Font.ITALIC)
+                            icon        = FontIcon.of(MaterialDesign.MDI_FOLDER_REMOVE, 14, mutedColor)
+                            foreground  = mutedColor
+                            font        = font.deriveFont(Font.ITALIC)
+                            toolTipText = "${obj.path} — not initialized"
                         }
                         else -> {
-                            icon       = FontIcon.of(MaterialDesign.MDI_FOLDER, 14, mutedColor)
-                            foreground = mutedColor
+                            icon        = FontIcon.of(MaterialDesign.MDI_FOLDER, 14, mutedColor)
+                            foreground  = mutedColor
+                            toolTipText = "${obj.path} — up to date"
                         }
                     }
                 }
                 is String -> {
                     text        = obj
                     toolTipText = null
-                    val hasDirtyChild = node.breadthFirstEnumeration().asSequence()
+                    val descendants = node.breadthFirstEnumeration().asSequence()
                         .mapNotNull { (it as? DefaultMutableTreeNode)?.userObject as? SubmoduleInfo }
-                        .any { it.isDirty }
-                    icon       = FontIcon.of(MaterialDesign.MDI_FOLDER, 14,
-                        if (hasDirtyChild) alertColor else foreground)
+                    val hasDirtyChild  = descendants.any { it.isDirty }
+                    val hasCommitChild = descendants.any { it.differentCommit }
+                    val tint = when {
+                        hasDirtyChild  -> dirtyColor
+                        hasCommitChild -> commitColor
+                        else           -> foreground
+                    }
+                    icon = FontIcon.of(MaterialDesign.MDI_FOLDER, 14, tint)
                     if (hasDirtyChild) {
-                        foreground = alertColor
+                        foreground = dirtyColor
                         font       = font.deriveFont(Font.BOLD)
+                    } else if (hasCommitChild) {
+                        foreground = commitColor
                     }
                 }
             }
@@ -2048,12 +2087,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     /** Fetches submodule status in background WITHOUT blocking or showing the loading bar. */
     private fun refreshSubmodulesAsync() {
         submodulesBar.setBusy(true)
-        object : SwingWorker<String, Void>() {
-            override fun doInBackground() = git.submoduleStatus().output
+        object : SwingWorker<List<SubmoduleInfo>, Void>() {
+            override fun doInBackground() = parseSubmodules(git.submoduleStatus().output)
             override fun done() {
                 submodulesBar.setBusy(false)
-                val out = try { get() } catch (_: Exception) { return }
-                applySubmodules(out)
+                val subs = try { get() } catch (_: Exception) { return }
+                applySubmodules(subs)
             }
         }.execute()
     }

@@ -298,6 +298,20 @@ class Git(val repo: String) {
 
     //region stash / tag
     fun submoduleStatus()                 = git("submodule", "status")
+
+    /**
+     * True if the submodule at [subPath] (relative to this repo) has uncommitted
+     * changes in its own working tree — i.e. the user should commit inside it.
+     *
+     * `git submodule status` only flags a *different commit* (gitlink mismatch); it does
+     * NOT see a dirty working tree, so we inspect the submodule's own porcelain status.
+     */
+    fun submoduleDirty(subPath: String): Boolean {
+        val dir = java.io.File(repo, subPath)
+        if (!java.io.File(dir, ".git").exists()) return false   // uninitialized → nothing to commit
+        return com.gitnarwhal.utils.Command(GIT, "status", "--porcelain", path = dir.absolutePath)
+            .execute().output.isNotBlank()
+    }
     fun stashList()                       = git("stash", "list")
     fun stashPush(message: String? = null) =
         if (message != null) git("stash", "push", "-m", message) else git("stash", "push")

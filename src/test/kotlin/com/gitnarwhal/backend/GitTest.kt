@@ -765,6 +765,22 @@ class GitTest {
         }
     }
 
+    @Test @Order(140)
+    fun `submoduleDirty returns false for an uninitialized or missing submodule`() {
+        // No .git inside the path → nothing to commit, treated as clean.
+        assertFalse(git.submoduleDirty("definitely-not-a-submodule"))
+    }
+
+    @Test @Order(141)
+    fun `submoduleDirty reflects working-tree changes when a git dir is present`() {
+        // The repo root itself has a .git, so it exercises the porcelain-status branch.
+        git.addAll(); git.commit("clean tree for submoduleDirty test")
+        assertFalse(git.submoduleDirty("."), "clean tree should report not dirty")
+        writeFile("dirty-probe.txt", "uncommitted change")
+        assertTrue(git.submoduleDirty("."), "an untracked file should make the tree dirty")
+        deleteFile("dirty-probe.txt")
+    }
+
     @Test @Order(137)
     fun `logFile returns history for a specific file`() {
         val r = git.logFile("README.md")
