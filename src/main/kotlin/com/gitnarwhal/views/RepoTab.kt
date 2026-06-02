@@ -364,6 +364,16 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         // History is loaded in windows of this many commits; more are appended on scroll.
         private const val COMMIT_PAGE = 300
 
+        // Min gap between focus-triggered refreshes (ms).
+        private const val FOCUS_REFRESH_MS = 3000L
+
+        // Shared, bounded pool for git fan-out in refresh(). Caps total concurrent git
+        // subprocesses across all tabs so refreshes can't spawn an unbounded process storm.
+        // Sized to cover refresh()'s 7 parallel reads without serializing a single refresh.
+        private val GIT_POOL = java.util.concurrent.Executors.newFixedThreadPool(8) { r ->
+            Thread(r, "gitnarwhal-git").apply { isDaemon = true }
+        }
+
         val GRAPH_PALETTE = listOf(
             Color(0x4F, 0xC3, 0xF7),  // sky blue
             Color(0x81, 0xC7, 0x84),  // green
@@ -874,6 +884,19 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private var displayedCommits = COMMIT_PAGE
     private var hasUncommittedNow = false
     @Volatile private var loadingMoreCommits = false
+    // Guards against overlapping refreshes. refresh() is triggered from several places
+    // (tab select, F5, programmatic). Without this, focus/tab churn stacks multiple
+    // 7-process git fan-outs + heavy EDT rebuilds, thrashing the table redraw.
+    @Volatile private var refreshing = false
+    @Volatile private var lastRefreshAt = 0L
+
+    /** Refresh on regaining window focus, but at most once per [FOCUS_REFRESH_MS] —
+     *  prevents every alt-tab / dialog-close from firing a full git fan-out. */
+    fun refreshOnFocus() {
+        if (refreshing) return
+        if (System.currentTimeMillis() - lastRefreshAt < FOCUS_REFRESH_MS) return
+        refresh()
+    }
 
     /**
      * Mounts exactly one of [historyView] / [fileStatusPanel] into [mainContainer].
@@ -1747,50 +1770,55 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     )
 
     fun refresh() {
+        // Skip overlapping refreshes: a refresh already in flight will publish fresh data.
+        // Coalescing here is what keeps focus/tab/F5 churn from thrashing the graph redraw.
+        if (refreshing) return
+        refreshing = true
+        lastRefreshAt = System.currentTimeMillis()
         showLoading()
         graphBar.setBusy(true); branchesBar.setBusy(true); stashesBar.setBusy(true)
         val window = displayedCommits.coerceAtLeast(COMMIT_PAGE)
         object : SwingWorker<RefreshSnapshot, Void>() {
             override fun doInBackground(): RefreshSnapshot {
-                val pool = java.util.concurrent.Executors.newCachedThreadPool()
-                return try {
-                    val fBranches    = pool.submit<com.gitnarwhal.utils.Command> { git.branches() }
-                    val fLog         = pool.submit<com.gitnarwhal.utils.Command> { git.log() }
-                    val fStash       = pool.submit<com.gitnarwhal.utils.Command> { git.stashList() }
-                    val fStatus      = pool.submit<com.gitnarwhal.utils.Command> { git.status() }
-                    val fUnpulled    = pool.submit<Int> { git.unpulledCount().output.trim().toIntOrNull() ?: 0 }
-                    val fUnpushed    = pool.submit<Int> { git.unpushedCount().output.trim().toIntOrNull() ?: 0 }
-                    val fBranchTrack = pool.submit<Pair<String, Pair<String,String>?>> {
-                        val b = git.currentBranch().output.trim()
-                        b to if (b.isNotBlank()) git.trackingBranch(b) else null
-                    }
-
-                    val branches   = fBranches.get()
-                    val log_       = fLog.get()
-                    val stash      = fStash.get()
-                    val status     = fStatus.get()
-                    val unpulled   = fUnpulled.get()
-                    val unpushed   = fUnpushed.get()
-                    val (branch, tracking) = fBranchTrack.get()
-                    val modified   = status.output.lines().count { it.length > 2 && !it.startsWith("##") }
-                    // Heavy graph layout computed HERE (background), not on the EDT.
-                    // Only the first [window] commits are laid out — keeps the JTable small
-                    // enough that Java2D renders it reliably; more load on scroll.
-                    val commits = if (log_.success) layoutCommitGraph(log_.output, modified > 0, window)
-                                  else emptyList()
-
-                    RefreshSnapshot(
-                        branches.output, branches.success, log_.output, log_.success,
-                        if (stash.success) stash.output else "",
-                        status.output,
-                        modified, unpulled, unpushed,
-                        branch, tracking, commits
-                    )
-                } finally {
-                    pool.shutdown()
+                // Shared bounded pool (see GIT_POOL) instead of a fresh cached pool per
+                // refresh — caps total concurrent git subprocesses so overlapping work
+                // can't spawn an unbounded process storm.
+                val pool = GIT_POOL
+                val fBranches    = pool.submit<com.gitnarwhal.utils.Command> { git.branches() }
+                val fLog         = pool.submit<com.gitnarwhal.utils.Command> { git.log() }
+                val fStash       = pool.submit<com.gitnarwhal.utils.Command> { git.stashList() }
+                val fStatus      = pool.submit<com.gitnarwhal.utils.Command> { git.status() }
+                val fUnpulled    = pool.submit<Int> { git.unpulledCount().output.trim().toIntOrNull() ?: 0 }
+                val fUnpushed    = pool.submit<Int> { git.unpushedCount().output.trim().toIntOrNull() ?: 0 }
+                val fBranchTrack = pool.submit<Pair<String, Pair<String,String>?>> {
+                    val b = git.currentBranch().output.trim()
+                    b to if (b.isNotBlank()) git.trackingBranch(b) else null
                 }
+
+                val branches   = fBranches.get()
+                val log_       = fLog.get()
+                val stash      = fStash.get()
+                val status     = fStatus.get()
+                val unpulled   = fUnpulled.get()
+                val unpushed   = fUnpushed.get()
+                val (branch, tracking) = fBranchTrack.get()
+                val modified   = status.output.lines().count { it.length > 2 && !it.startsWith("##") }
+                // Heavy graph layout computed HERE (background), not on the EDT.
+                // Only the first [window] commits are laid out — keeps the JTable small
+                // enough that Java2D renders it reliably; more load on scroll.
+                val commits = if (log_.success) layoutCommitGraph(log_.output, modified > 0, window)
+                              else emptyList()
+
+                return RefreshSnapshot(
+                    branches.output, branches.success, log_.output, log_.success,
+                    if (stash.success) stash.output else "",
+                    status.output,
+                    modified, unpulled, unpushed,
+                    branch, tracking, commits
+                )
             }
             override fun done() {
+                refreshing = false
                 val snap = try { get() } catch (e: Exception) {
                     hideLoading()
                     graphBar.setBusy(false); branchesBar.setBusy(false); stashesBar.setBusy(false)

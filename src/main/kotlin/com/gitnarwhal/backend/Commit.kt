@@ -12,7 +12,7 @@ import kotlin.reflect.KProperty
 enum class RefType { HEAD, LOCAL_BRANCH, REMOTE_BRANCH, TAG }
 data class RefInfo(val name: String, val type: RefType)
 
-class Commit(var hash: String, val repoTab: RepoTab) {
+class Commit(var hash: String, val repoTab: RepoTab? = null) {
     //data for drawing commit (consumed by Swing graph renderer)
     var explored: Boolean = false
     var y = -1
@@ -77,7 +77,14 @@ open class GitShow {
 
     operator fun getValue(commit: Commit, property: KProperty<*>): String {
         if (commitShowData == null) {
-            with(commit.repoTab.git.show(commit)) {
+            // NEVER block the EDT on a git-show subprocess: doing so per-cell during a
+            // table repaint is the root of the "graph freezes / stops redrawing" bug.
+            // Pre-populated commits never hit this path; if an un-populated commit somehow
+            // reaches a renderer, return a placeholder and let a later refresh fill it in.
+            if (javax.swing.SwingUtilities.isEventDispatchThread()) return "…"
+            val repoTab = commit.repoTab
+                ?: throw Exception("no repo context to load commit: ${commit.hash}")
+            with(repoTab.git.show(commit)) {
                 if (!success)
                     throw Exception("can't get data for commit: ${commit.hash}")
                 commitShowData = output.lines()

@@ -48,7 +48,7 @@ private fun startApp() {
     // Auto-refresh the current repo tab when the app regains focus
     frame.addWindowFocusListener(object : java.awt.event.WindowAdapter() {
         override fun windowGainedFocus(e: java.awt.event.WindowEvent) {
-            (mainView.tabPane.selectedComponent as? com.gitnarwhal.views.RepoTab)?.refresh()
+            (mainView.tabPane.selectedComponent as? com.gitnarwhal.views.RepoTab)?.refreshOnFocus()
         }
     })
 
