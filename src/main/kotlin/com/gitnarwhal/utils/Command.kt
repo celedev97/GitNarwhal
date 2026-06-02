@@ -83,6 +83,16 @@ class Command(vararg command: String, path: String = "./") {
 
 
     companion object{
+        /**
+         * Builds a command routed through the platform shell so that PATHEXT and
+         * `.cmd`/`.bat` launchers (e.g. VS Code's `code.cmd`) resolve exactly like a
+         * real terminal. ProcessBuilder on Windows only finds `.exe` on the PATH — a
+         * bare `code` raises "CreateProcess error=2". `cmd /c code …` fixes it.
+         * Non-Windows platforms resolve bare names natively, so [args] is used as-is.
+         */
+        fun shell(vararg args: String): Command =
+            if (OS.CURRENT == OS.WINDOWS) Command("cmd", "/c", *args) else Command(*args)
+
         fun find(command: String): Command? {
             val where = Command(OS.WHERE, command).execute()
             if (where.success && where.output.isNotEmpty()) {

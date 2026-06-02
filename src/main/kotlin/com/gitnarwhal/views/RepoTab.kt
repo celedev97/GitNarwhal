@@ -2592,17 +2592,18 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val repoCmd   = git.configGet("gitnarwhal.ideCommand").output.trim()
         val globalCmd = Settings.ideCommand.trim()
         when {
-            repoCmd.isNotBlank()   -> Command(repoCmd.replace("\$REPO", path)).execute(path)
-            globalCmd.isNotBlank() -> Command(globalCmd.replace("\$REPO", path)).execute(path)
+            // Route through the shell so a bare `code` (= code.cmd on Windows) resolves.
+            repoCmd.isNotBlank()   -> Command.shell(repoCmd.replace("\$REPO", path)).execute(path)
+            globalCmd.isNotBlank() -> Command.shell(globalCmd.replace("\$REPO", path)).execute(path)
             else -> ideAutoDetect()
         }
     }.start()
 
     private fun ideAutoDetect() {
-        // Try `code` in PATH (works when VS Code shell integration is installed)
-        val codeInPath = Command.find("code")
-        if (codeInPath != null) { (codeInPath + path).execute(); return }
-        // Windows: check common install locations
+        // Try `code` on the PATH. Must go through the shell on Windows: `code` is
+        // code.cmd, which ProcessBuilder can't launch directly (PATHEXT not applied).
+        if (Command.find("code") != null) { Command.shell("code", path).execute(); return }
+        // Windows: check common install locations (Code.exe is directly launchable)
         if (OS.CURRENT == OS.WINDOWS) {
             val candidates = listOfNotNull(
                 System.getenv("LOCALAPPDATA")?.let { "$it\\Programs\\Microsoft VS Code\\Code.exe" },

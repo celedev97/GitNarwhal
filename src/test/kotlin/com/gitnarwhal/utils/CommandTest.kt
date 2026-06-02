@@ -55,6 +55,23 @@ class CommandTest {
     }
 
     @Test
+    fun `shell wraps in cmd slash c on Windows, passes through elsewhere`() {
+        val cmd = Command.shell("code", "/some/path")
+        if (OS.CURRENT == OS.WINDOWS)
+            assertEquals("cmd /c code /some/path", cmd.toString())
+        else
+            assertEquals("code /some/path", cmd.toString())
+    }
+
+    @Test
+    fun `shell actually runs a command through the platform shell`() {
+        val cmd = Command.shell("echo", "shell-launch")
+        cmd.execute()
+        assertTrue(cmd.success, "shell echo should succeed, got code=${cmd.code} output='${cmd.output}'")
+        assertTrue(cmd.output.contains("shell-launch"))
+    }
+
+    @Test
     fun `toString returns space-joined command parts`() {
         val cmd = Command("git", "status")
         assertEquals("git status", cmd.toString())
