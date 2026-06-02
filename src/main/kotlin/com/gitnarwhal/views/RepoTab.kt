@@ -2051,8 +2051,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 is String -> {
                     text        = obj
                     toolTipText = null
+                    // Materialize: breadthFirstEnumeration().asSequence() is consume-once,
+                    // and we iterate it twice below.
                     val descendants = node.breadthFirstEnumeration().asSequence()
                         .mapNotNull { (it as? DefaultMutableTreeNode)?.userObject as? SubmoduleInfo }
+                        .toList()
                     val hasDirtyChild  = descendants.any { it.isDirty }
                     val hasCommitChild = descendants.any { it.differentCommit }
                     val tint = when {
