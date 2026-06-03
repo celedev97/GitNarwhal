@@ -2591,13 +2591,23 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     fun openInIDE() = Thread {
         val repoCmd   = git.configGet("gitnarwhal.ideCommand").output.trim()
         val globalCmd = Settings.ideCommand.trim()
-        when {
-            // Route through the shell so a bare `code` (= code.cmd on Windows) resolves.
-            repoCmd.isNotBlank()   -> Command.shell(repoCmd.replace("\$REPO", path)).execute(path)
-            globalCmd.isNotBlank() -> Command.shell(globalCmd.replace("\$REPO", path)).execute(path)
-            else -> ideAutoDetect()
-        }
+        val template  = repoCmd.ifBlank { globalCmd }
+        if (template.isNotBlank()) launchIde(template) else ideAutoDetect()
     }.start()
+
+    /**
+     * Runs a user-configured IDE command. Tokenized (not a raw string) so the repo
+     * path stays a single argument even with spaces. If the template contains `$REPO`
+     * it's substituted; otherwise the repo path is appended so the IDE opens the folder
+     * (e.g. `code "C:\full\path"`) instead of just launching empty.
+     * Routed through the shell so a bare `code` (= code.cmd on Windows) resolves.
+     */
+    private fun launchIde(template: String) {
+        val tokens = template.split(" ").filter { it.isNotBlank() }
+        val args = if (template.contains("\$REPO")) tokens.map { it.replace("\$REPO", path) }
+                   else tokens + path
+        Command.shell(*args.toTypedArray()).execute(path)
+    }
 
     private fun ideAutoDetect() {
         // Try `code` on the PATH. Must go through the shell on Windows: `code` is

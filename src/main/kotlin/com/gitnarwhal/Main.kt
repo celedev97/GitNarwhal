@@ -19,6 +19,10 @@ import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
 
 fun main() {
+    // Surface uncaught exceptions (background threads + EDT) to the user with a
+    // copyable stack trace instead of a silent stderr dump.
+    com.gitnarwhal.components.ExceptionReporter.install()
+
     // FlatLaf must be installed before any Swing component is created.
     // Register the custom defaults source first so FlatLaf.properties is picked up.
     ThemeService.registerDefaultsSource()
