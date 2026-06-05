@@ -89,19 +89,16 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val fullName: String, val leafName: String,
         val isActive: Boolean, val tracking: String? = null
     )
+    private data class TagInfo(val name: String)
+    private data class StashInfo(val index: Int, val description: String)
 
     private val branchRoot         = DefaultMutableTreeNode("root")
-    private val localBranchesNode  = DefaultMutableTreeNode("LOCAL BRANCHES")
-    private val remoteBranchesNode = DefaultMutableTreeNode("REMOTE BRANCHES")
+    private val localBranchesNode  = DefaultMutableTreeNode("BRANCHES")
+    private val tagsNode           = DefaultMutableTreeNode("TAGS")
+    private val remoteBranchesNode = DefaultMutableTreeNode("REMOTES")
+    private val stashesNode        = DefaultMutableTreeNode("STASHES")
     private val branchTreeModel    = DefaultTreeModel(branchRoot)
     private val branchTree: JTree
-
-    // ── Stash list ────────────────────────────────────────────────────────────
-    private val stashListModel = DefaultListModel<String>()
-    private val stashList      = JList(stashListModel).apply {
-        selectionMode      = ListSelectionModel.SINGLE_SELECTION
-        componentPopupMenu = buildStashPopup()
-    }
 
     // ── File Status models + widgets — MUST be declared before init ──────────
     private val stagedModel   = DefaultListModel<String>()
@@ -162,7 +159,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     // ── Init ──────────────────────────────────────────────────────────────────
     init {
         branchRoot.add(localBranchesNode)
+        branchRoot.add(tagsNode)
         branchRoot.add(remoteBranchesNode)
+        branchRoot.add(stashesNode)
 
         branchTree = JTree(branchTreeModel).apply {
             isRootVisible    = false
@@ -995,13 +994,32 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         ): Component {
             super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus)
             val node = value as? DefaultMutableTreeNode ?: return this
+            val fg = UIManager.getColor("Label.foreground") ?: Color.LIGHT_GRAY
             when (val obj = node.userObject) {
                 is BranchInfo -> {
                     text = obj.leafName
                     font = font.deriveFont(if (obj.isActive) Font.BOLD else Font.PLAIN)
+                    icon = null
+                }
+                is TagInfo -> {
+                    text = obj.name
+                    font = font.deriveFont(Font.PLAIN)
+                    icon = null
+                }
+                is StashInfo -> {
+                    text = obj.description
+                    font = font.deriveFont(Font.PLAIN)
+                    icon = null
                 }
                 is String -> {
                     text = obj
+                    icon = when (obj) {
+                        "BRANCHES" -> FontIcon.of(MaterialDesign.MDI_SOURCE_BRANCH,   14, fg)
+                        "TAGS"     -> FontIcon.of(MaterialDesign.MDI_TAG_OUTLINE,     14, fg)
+                        "REMOTES"  -> FontIcon.of(MaterialDesign.MDI_CLOUD_OUTLINE,   14, fg)
+                        "STASHES"  -> FontIcon.of(MaterialDesign.MDI_PACKAGE_VARIANT, 14, fg)
+                        else       -> null
+                    }
                     font = if (node.parent == branchRoot) font.deriveFont(Font.BOLD)
                            else font.deriveFont(Font.PLAIN)
                 }
@@ -1019,8 +1037,15 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             if (!e.isPopupTrigger) return
             val tp = branchTree.getPathForLocation(e.x, e.y) ?: return
             branchTree.selectionPath = tp
-            val bi = (tp.lastPathComponent as? DefaultMutableTreeNode)?.userObject as? BranchInfo ?: return
-            buildBranchPopup(bi.fullName).show(branchTree, e.x, e.y)
+            val node = tp.lastPathComponent as? DefaultMutableTreeNode ?: return
+            when (val obj = node.userObject) {
+                is BranchInfo -> {
+                    val isLocal = tp.path.any { it === localBranchesNode }
+                    buildBranchPopup(obj, isLocal).show(branchTree, e.x, e.y)
+                }
+                is TagInfo   -> buildTagPopup(obj.name).show(branchTree, e.x, e.y)
+                is StashInfo -> buildStashTreePopup(obj.index).show(branchTree, e.x, e.y)
+            }
         }
         override fun mouseClicked(e: MouseEvent) {
             if (e.clickCount == 2 && SwingUtilities.isLeftMouseButton(e)) {
@@ -1031,7 +1056,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
     }
 
-    private fun buildBranchPopup(branchFullName: String): JPopupMenu {
+    private fun buildBranchPopup(bi: BranchInfo, isLocal: Boolean): JPopupMenu {
+        val branchFullName = bi.fullName
         val menu = JPopupMenu()
         menu.add(menuItem("Checkout") { checkoutBranch(branchFullName) })
         menu.add(menuItem("Merge into current") {
@@ -1047,6 +1073,49 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             }
         })
         menu.addSeparator()
+        if (isLocal) {
+            val tracking = bi.tracking
+            if (tracking != null) {
+                val trackParts  = tracking.split("/", limit = 2)
+                val remote      = trackParts[0]
+                val remoteBranch = if (trackParts.size > 1) trackParts[1] else branchFullName
+                menu.add(menuItem("Push to $tracking") {
+                    val rp = SwingUtilities.getRootPane(this) ?: return@menuItem
+                    val progress = ProgressOverlay()
+                    progress.show(rp, "Pushing…")
+                    object : SwingWorker<Boolean, String>() {
+                        override fun doInBackground(): Boolean {
+                            val r = git.pushRefspecStream(remote, branchFullName, remoteBranch, false, false) { publish(it) }
+                            return r.success
+                        }
+                        override fun process(chunks: List<String>) { chunks.forEach { progress.appendOutput(it) } }
+                        override fun done() {
+                            val ok = try { get() } catch (e: Exception) { false }
+                            progress.finishStreaming(ok); if (ok) refresh()
+                        }
+                    }.execute()
+                })
+                menu.add(menuItem("Pull from $tracking") {
+                    val rp = SwingUtilities.getRootPane(this) ?: return@menuItem
+                    val progress = ProgressOverlay()
+                    progress.show(rp, "Pulling…")
+                    object : SwingWorker<Boolean, String>() {
+                        override fun doInBackground(): Boolean {
+                            val r = git.pullStream(remote, remoteBranch) { publish(it) }
+                            return r.success
+                        }
+                        override fun process(chunks: List<String>) { chunks.forEach { progress.appendOutput(it) } }
+                        override fun done() {
+                            val ok = try { get() } catch (e: Exception) { false }
+                            progress.finishStreaming(ok); if (ok) refresh()
+                        }
+                    }.execute()
+                })
+            } else {
+                menu.add(menuItem("Push…") { push() })
+            }
+            menu.addSeparator()
+        }
         menu.add(menuItem("Rename…") {
             val newName = JOptionPane.showInputDialog(this, "New name:", branchFullName)
                 ?.takeIf { it.isNotBlank() } ?: return@menuItem
@@ -1091,26 +1160,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             mainCards.show(mainContainer, CARD_HISTORY)
         })
 
-        // BRANCHES section
-        val branchesPanel = JPanel(BorderLayout()).apply {
-            border = BorderFactory.createTitledBorder("Branches")
-        }
-        branchesPanel.add(JScrollPane(branchTree), BorderLayout.CENTER)
-
-        // STASHES section
-        val stashesPanel = JPanel(BorderLayout()).apply {
-            border = BorderFactory.createTitledBorder("Stashes")
-            preferredSize = Dimension(0, 120)
-        }
-        stashesPanel.add(stashList, BorderLayout.CENTER)
-
-        // Compose: workspace at top, then branches + stashes in a scroll
-        val sections = JPanel().apply { layout = BoxLayout(this, BoxLayout.Y_AXIS) }
-        sections.add(workspacePanel)
-        sections.add(branchesPanel.apply { alignmentX = Component.LEFT_ALIGNMENT })
-        sections.add(stashesPanel.apply { alignmentX = Component.LEFT_ALIGNMENT })
-
-        panel.add(JScrollPane(sections), BorderLayout.CENTER)
+        panel.add(workspacePanel, BorderLayout.NORTH)
+        panel.add(JScrollPane(branchTree), BorderLayout.CENTER)
         return panel
     }
 
@@ -1313,12 +1364,17 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     // ── Stash ─────────────────────────────────────────────────────────────────
 
-    private fun buildStashPopup(): JPopupMenu {
+    private fun buildStashTreePopup(idx: Int): JPopupMenu {
         val menu = JPopupMenu()
-        menu.add(menuItem("Apply") { stashAction { i -> git.stashApply(i) } })
-        menu.add(menuItem("Pop")   { stashAction { i -> git.stashPop(i) } })
-        menu.add(menuItem("Drop")  {
-            val idx = stashList.selectedIndex.takeIf { it >= 0 } ?: return@menuItem
+        menu.add(menuItem("Apply") {
+            val r = git.stashApply(idx)
+            if (!r.success) showError("Stash op failed", r.output); refresh()
+        })
+        menu.add(menuItem("Pop") {
+            val r = git.stashPop(idx)
+            if (!r.success) showError("Stash op failed", r.output); refresh()
+        })
+        menu.add(menuItem("Drop") {
             if (confirm("Drop stash@{$idx}? (irreversible)")) {
                 val r = git.stashDrop(idx)
                 if (!r.success) showError("Drop failed", r.output); refreshStashes()
@@ -1327,10 +1383,20 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         return menu
     }
 
-    private fun stashAction(op: (Int) -> Command) {
-        val idx = stashList.selectedIndex.takeIf { it >= 0 } ?: return
-        val r = op(idx)
-        if (!r.success) showError("Stash op failed", r.output); refresh()
+    private fun buildTagPopup(tagName: String): JPopupMenu {
+        val menu = JPopupMenu()
+        menu.add(menuItem("Checkout") {
+            val r = git.selectBranch(tagName)
+            if (!r.success) showError("Checkout failed", r.output) else refresh()
+        })
+        menu.addSeparator()
+        menu.add(menuItem("Delete") {
+            if (confirm("Delete tag '$tagName'?")) {
+                val r = git.tagDelete(tagName)
+                if (!r.success) showError("Delete tag failed", r.output) else refreshBranches()
+            }
+        })
+        return menu
     }
 
     private fun stashCurrentChanges() {
@@ -1371,6 +1437,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val branchesOut: String, val branchOk: Boolean,
         val logOut: String,      val logOk: Boolean,
         val stashOut: String,
+        val tagsOut: String,
         val statusOut: String,
         val modifiedCount: Int,
         val unpulledCount: Int,
@@ -1383,6 +1450,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 val b  = git.branches()
                 val l  = git.log()
                 val s  = git.stashList()
+                val t  = git.tags()
                 val st = git.status()
                 val modified = st.output.lines().count { it.length > 2 && !it.startsWith("##") }
                 val unpulled = git.unpulledCount().output.trim().toIntOrNull() ?: 0
@@ -1390,6 +1458,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 return RefreshSnapshot(
                     b.output, b.success, l.output, l.success,
                     if (s.success) s.output else "",
+                    if (t.success) t.output else "",
                     st.output,
                     modified, unpulled, unpushed
                 )
@@ -1399,6 +1468,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 if (snap.branchOk) applyBranches(snap.branchesOut)
                 if (snap.logOk)    applyCommits(snap.logOut, snap.modifiedCount > 0)
                 applyStashes(snap.stashOut)
+                applyTags(snap.tagsOut)
                 applyFileStatus(snap.statusOut)
                 commitBtn.badge = snap.modifiedCount
                 pullBtn.badge   = snap.unpulledCount
@@ -1408,11 +1478,16 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     fun refreshBranches() {
-        object : SwingWorker<String?, Void>() {
-            override fun doInBackground() = git.branches().output.takeIf { git.branches().success }
+        object : SwingWorker<Pair<String?, String>, Void>() {
+            override fun doInBackground(): Pair<String?, String> {
+                val b = git.branches()
+                val t = git.tags()
+                return (b.output.takeIf { b.success }) to (if (t.success) t.output else "")
+            }
             override fun done() {
-                val out = try { get() } catch (e: Exception) { null } ?: return
-                applyBranches(out)
+                val (branchOut, tagsOut) = try { get() } catch (e: Exception) { return }
+                if (branchOut != null) applyBranches(branchOut)
+                applyTags(tagsOut)
             }
         }.execute()
     }
@@ -1658,8 +1733,21 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     private fun applyStashes(output: String) {
-        stashListModel.clear()
-        for (line in output.lines()) if (line.isNotBlank()) stashListModel.addElement(line)
+        stashesNode.removeAllChildren()
+        output.lines().forEachIndexed { idx, line ->
+            if (line.isNotBlank()) stashesNode.add(DefaultMutableTreeNode(StashInfo(idx, line)))
+        }
+        branchTreeModel.nodeStructureChanged(stashesNode)
+        branchTree.expandPath(javax.swing.tree.TreePath(arrayOf<Any>(branchRoot, stashesNode)))
+    }
+
+    private fun applyTags(output: String) {
+        tagsNode.removeAllChildren()
+        output.lines().filter { it.isNotBlank() }.forEach { tag ->
+            tagsNode.add(DefaultMutableTreeNode(TagInfo(tag.trim())))
+        }
+        branchTreeModel.nodeStructureChanged(tagsNode)
+        branchTree.expandPath(javax.swing.tree.TreePath(arrayOf<Any>(branchRoot, tagsNode)))
     }
 
     // ── Toolbar git actions ───────────────────────────────────────────────────
