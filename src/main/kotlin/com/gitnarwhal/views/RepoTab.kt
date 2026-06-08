@@ -11,18 +11,21 @@ import com.gitnarwhal.components.ProgressOverlay
 import com.gitnarwhal.components.PullOverlay
 import com.gitnarwhal.components.PushOverlay
 import com.gitnarwhal.utils.Command
+import com.gitnarwhal.utils.NativeFileChooser
 import com.gitnarwhal.utils.OS
 import com.gitnarwhal.utils.Settings
 import org.json.JSONObject
 import org.kordamp.ikonli.Ikon
 import org.kordamp.ikonli.materialdesign.MaterialDesign
 import org.kordamp.ikonli.swing.FontIcon
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import java.awt.Insets
 import java.awt.BorderLayout
 import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Component
 import java.awt.Dimension
-import java.awt.GridBagLayout
 import java.awt.FlowLayout
 import java.awt.Rectangle
 import java.awt.Font
@@ -91,12 +94,39 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     )
     private data class TagInfo(val name: String)
     private data class StashInfo(val index: Int, val description: String)
+    private data class WorktreeInfo(
+        val path: String,
+        val branch: String?,   // null se bare / detached
+        val head: String,
+        val isMain: Boolean
+    )
+    private data class SubmoduleInfo(
+        val path: String, val name: String, val hash: String,
+        val isDirty: Boolean, val differentCommit: Boolean, val isUninitialized: Boolean
+    ) {
+        val needsAttention get() = isDirty || differentCommit
+    }
+    /** Marker for intermediate folder nodes in the submodule subtree. */
+    private data class SubmoduleFolderNode(val name: String)
 
     private val branchRoot         = DefaultMutableTreeNode("root")
     private val localBranchesNode  = DefaultMutableTreeNode("BRANCHES")
     private val tagsNode           = DefaultMutableTreeNode("TAGS")
     private val remoteBranchesNode = DefaultMutableTreeNode("REMOTES")
     private val stashesNode        = DefaultMutableTreeNode("STASHES")
+    private val submodulesNode     = DefaultMutableTreeNode("SUBMODULES")
+    private val worktreesNode      = DefaultMutableTreeNode("WORKTREES")
+
+    // ── Sidebar progress bar ──────────────────────────────────────────────────
+    private fun miniBar() = JProgressBar().apply {
+        isIndeterminate = false; value = 0; isStringPainted = false; border = null
+        preferredSize = Dimension(0, 3); maximumSize = Dimension(Int.MAX_VALUE, 3)
+    }
+    private fun JProgressBar.setBusy(busy: Boolean) { isIndeterminate = busy; if (!busy) value = 0 }
+    private val sidebarBar = miniBar()
+
+    // ── Submodule state ───────────────────────────────────────────────────────
+    private val allSubmodules = mutableListOf<SubmoduleInfo>()
     private val branchTreeModel    = DefaultTreeModel(branchRoot)
     private val branchTree: JTree
 
@@ -162,6 +192,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         branchRoot.add(tagsNode)
         branchRoot.add(remoteBranchesNode)
         branchRoot.add(stashesNode)
+        branchRoot.add(submodulesNode)
+        branchRoot.add(worktreesNode)
 
         branchTree = JTree(branchTreeModel).apply {
             isRootVisible    = false
@@ -1011,14 +1043,70 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     font = font.deriveFont(Font.PLAIN)
                     icon = null
                 }
+                is WorktreeInfo -> {
+                    text        = obj.branch?.removePrefix("refs/heads/") ?: "(bare)"
+                    toolTipText = obj.path
+                    font        = font.deriveFont(Font.PLAIN)
+                    icon        = FontIcon.of(MaterialDesign.MDI_FOLDER_OUTLINE, 14, fg)
+                }
+                is SubmoduleInfo -> {
+                    val dirtyColor  = Color(0xFF, 0xB3, 0x00)
+                    val commitColor = Color(0x4F, 0xC3, 0xF7)
+                    val mutedColor  = UIManager.getColor("Label.disabledForeground") ?: Color.GRAY
+                    text = obj.name
+                    when {
+                        obj.isDirty -> {
+                            icon        = FontIcon.of(MaterialDesign.MDI_PENCIL, 14, dirtyColor)
+                            foreground  = dirtyColor
+                            font        = font.deriveFont(Font.BOLD)
+                            toolTipText = "${obj.path} — modifiche non committate nel submodulo"
+                        }
+                        obj.differentCommit -> {
+                            icon        = FontIcon.of(MaterialDesign.MDI_SOURCE_FORK, 14, commitColor)
+                            foreground  = commitColor
+                            font        = font.deriveFont(Font.PLAIN)
+                            toolTipText = "${obj.path} — commit registrato diverso da quello locale"
+                        }
+                        obj.isUninitialized -> {
+                            icon        = FontIcon.of(MaterialDesign.MDI_FOLDER_REMOVE, 14, mutedColor)
+                            foreground  = mutedColor
+                            font        = font.deriveFont(Font.ITALIC)
+                            toolTipText = "${obj.path} — non inizializzato"
+                        }
+                        else -> {
+                            icon        = FontIcon.of(MaterialDesign.MDI_FOLDER_OUTLINE, 14, mutedColor)
+                            foreground  = mutedColor
+                            font        = font.deriveFont(Font.PLAIN)
+                            toolTipText = "${obj.path} — aggiornato"
+                        }
+                    }
+                }
+                is SubmoduleFolderNode -> {
+                    val dirtyColor  = Color(0xFF, 0xB3, 0x00)
+                    val commitColor = Color(0x4F, 0xC3, 0xF7)
+                    text = obj.name
+                    font = font.deriveFont(Font.PLAIN)
+                    // breadthFirstEnumeration is consumed-once — collect to List first
+                    val descendants = node.breadthFirstEnumeration().asSequence()
+                        .mapNotNull { (it as? DefaultMutableTreeNode)?.userObject as? SubmoduleInfo }
+                        .toList()
+                    val hasDirty   = descendants.any { it.isDirty }
+                    val hasCommit  = descendants.any { it.differentCommit }
+                    val tint = when { hasDirty -> dirtyColor; hasCommit -> commitColor; else -> fg }
+                    icon = FontIcon.of(MaterialDesign.MDI_FOLDER, 14, tint)
+                    if (hasDirty)       { foreground = dirtyColor;  font = font.deriveFont(Font.BOLD) }
+                    else if (hasCommit) { foreground = commitColor }
+                }
                 is String -> {
                     text = obj
                     icon = when (obj) {
-                        "BRANCHES" -> FontIcon.of(MaterialDesign.MDI_SOURCE_BRANCH,   14, fg)
-                        "TAGS"     -> FontIcon.of(MaterialDesign.MDI_TAG_OUTLINE,     14, fg)
-                        "REMOTES"  -> FontIcon.of(MaterialDesign.MDI_CLOUD_OUTLINE,   14, fg)
-                        "STASHES"  -> FontIcon.of(MaterialDesign.MDI_PACKAGE_VARIANT, 14, fg)
-                        else       -> null
+                        "BRANCHES"   -> FontIcon.of(MaterialDesign.MDI_SOURCE_BRANCH,   14, fg)
+                        "TAGS"       -> FontIcon.of(MaterialDesign.MDI_TAG_OUTLINE,     14, fg)
+                        "REMOTES"    -> FontIcon.of(MaterialDesign.MDI_CLOUD_OUTLINE,   14, fg)
+                        "STASHES"    -> FontIcon.of(MaterialDesign.MDI_PACKAGE_VARIANT, 14, fg)
+                        "SUBMODULES" -> FontIcon.of(MaterialDesign.MDI_CUBE_OUTLINE,    14, fg)
+                        "WORKTREES"  -> FontIcon.of(MaterialDesign.MDI_FOLDER_MULTIPLE, 14, fg)
+                        else         -> null
                     }
                     font = if (node.parent == branchRoot) font.deriveFont(Font.BOLD)
                            else font.deriveFont(Font.PLAIN)
@@ -1043,15 +1131,25 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     val isLocal = tp.path.any { it === localBranchesNode }
                     buildBranchPopup(obj, isLocal).show(branchTree, e.x, e.y)
                 }
-                is TagInfo   -> buildTagPopup(obj.name).show(branchTree, e.x, e.y)
-                is StashInfo -> buildStashTreePopup(obj.index).show(branchTree, e.x, e.y)
+                is TagInfo      -> buildTagPopup(obj.name).show(branchTree, e.x, e.y)
+                is StashInfo    -> buildStashTreePopup(obj.index).show(branchTree, e.x, e.y)
+                is SubmoduleInfo -> buildSubmodulePopup(obj).show(branchTree, e.x, e.y)
+                is WorktreeInfo -> buildWorktreePopup(obj).show(branchTree, e.x, e.y)
+                is String -> {
+                    if (node === worktreesNode)  buildAddWorktreeMenu().show(branchTree, e.x, e.y)
+                    else if (node === submodulesNode) buildSubmoduleHeaderMenu().show(branchTree, e.x, e.y)
+                }
             }
         }
         override fun mouseClicked(e: MouseEvent) {
             if (e.clickCount == 2 && SwingUtilities.isLeftMouseButton(e)) {
-                val tp = branchTree.getPathForLocation(e.x, e.y) ?: return
-                val bi = (tp.lastPathComponent as? DefaultMutableTreeNode)?.userObject as? BranchInfo ?: return
-                checkoutBranch(bi.fullName)
+                val tp   = branchTree.getPathForLocation(e.x, e.y) ?: return
+                val node = tp.lastPathComponent as? DefaultMutableTreeNode ?: return
+                when (val obj = node.userObject) {
+                    is SubmoduleInfo -> openSubmoduleTab(obj)
+                    is WorktreeInfo  -> openWorktreeAsTab(obj)
+                    is BranchInfo    -> checkoutBranch(obj.fullName)
+                }
             }
         }
     }
@@ -1162,6 +1260,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         panel.add(workspacePanel, BorderLayout.NORTH)
         panel.add(JScrollPane(branchTree), BorderLayout.CENTER)
+        panel.add(sidebarBar, BorderLayout.SOUTH)
         return panel
     }
 
@@ -1383,6 +1482,202 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         return menu
     }
 
+    // ── Submodule ─────────────────────────────────────────────────────────────
+
+    private fun buildSubmodulePopup(info: SubmoduleInfo): JPopupMenu {
+        val menu = JPopupMenu()
+        menu.add(menuItem("Open as Tab") { openSubmoduleTab(info) })
+        menu.addSeparator()
+        menu.add(menuItem("Update Submodule") {
+            val r = com.gitnarwhal.utils.Command(
+                com.gitnarwhal.backend.Git.GIT,
+                "submodule", "update", "--init", "--recursive", info.path,
+                path = git.repo
+            ).execute()
+            if (!r.success) showError("Update failed", r.output) else refreshSubmodules()
+        })
+        return menu
+    }
+
+    private fun buildSubmoduleHeaderMenu(): JPopupMenu {
+        val menu = JPopupMenu()
+        menu.add(menuItem("Refresh Submodules") { refreshSubmodules() })
+        return menu
+    }
+
+    private fun openSubmoduleTab(info: SubmoduleInfo) {
+        val mv      = mainView() ?: return
+        val subPath = java.io.File(git.repo, info.path).canonicalPath
+        val existing = (0 until mv.tabPane.tabCount)
+            .mapNotNull { mv.tabPane.getComponentAt(it) as? RepoTab }
+            .firstOrNull { java.io.File(it.path).canonicalPath == subPath }
+        if (existing != null) mv.selectTab(existing)
+        else mv.addTab(RepoTab(subPath, info.name))
+    }
+
+    /**
+     * Parses `git submodule status` output. Probes each submodule's working tree
+     * for uncommitted changes (one extra git-status per submodule). Runs on a
+     * background thread.
+     *
+     * Flag meanings: ' ' clean · '+' different commit · '-' uninitialized · 'U' conflicts.
+     */
+    private fun parseSubmodules(output: String): List<SubmoduleInfo> {
+        val subs = mutableListOf<SubmoduleInfo>()
+        for (line in output.lines()) {
+            if (line.isBlank()) continue
+            val flag = line[0]
+            val rest = line.drop(1).trim()
+            val spaceIdx = rest.indexOf(' ')
+            if (spaceIdx < 0) continue
+            val hash      = rest.substring(0, spaceIdx)
+            val remainder = rest.substring(spaceIdx + 1).trim()
+            val subPath   = remainder.substringBefore(" (").substringBefore("\t").trim()
+            if (subPath.isBlank()) continue
+            val name = subPath.substringAfterLast("/").ifBlank { subPath }
+            val uninitialized = flag == '-'
+            subs += SubmoduleInfo(
+                path            = subPath,
+                name            = name,
+                hash            = hash,
+                isDirty         = if (uninitialized) false else git.submoduleDirty(subPath),
+                differentCommit = flag == '+' || flag == 'U',
+                isUninitialized = uninitialized
+            )
+        }
+        return subs
+    }
+
+    private fun applySubmodules(subs: List<SubmoduleInfo>) {
+        allSubmodules.clear()
+        allSubmodules.addAll(subs)
+        submodulesNode.removeAllChildren()
+        for (info in allSubmodules) insertSubmoduleNode(info)
+        branchTreeModel.nodeStructureChanged(submodulesNode)
+        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+    }
+
+    /** Inserts a submodule leaf into the tree, creating intermediate folder nodes for path segments. */
+    private fun insertSubmoduleNode(info: SubmoduleInfo) {
+        val segs    = info.path.split("/")
+        var current = submodulesNode
+        for (i in 0 until segs.size - 1) {
+            val seg = segs[i]
+            current = current.children().asSequence()
+                .filterIsInstance<DefaultMutableTreeNode>()
+                .firstOrNull { it.userObject == SubmoduleFolderNode(seg) }
+                ?: DefaultMutableTreeNode(SubmoduleFolderNode(seg)).also { current.add(it) }
+        }
+        current.add(DefaultMutableTreeNode(info))
+    }
+
+    fun refreshSubmodules() {
+        sidebarBar.setBusy(true)
+        object : SwingWorker<List<SubmoduleInfo>, Void>() {
+            override fun doInBackground() = parseSubmodules(git.submoduleStatus().output)
+            override fun done() {
+                sidebarBar.setBusy(false)
+                val subs = try { get() } catch (_: Exception) { return }
+                applySubmodules(subs)
+            }
+        }.execute()
+    }
+
+    // ── Worktree ──────────────────────────────────────────────────────────────
+
+    private fun buildWorktreePopup(wt: WorktreeInfo): JPopupMenu {
+        val menu = JPopupMenu()
+        menu.add(menuItem("Open as Tab") { openWorktreeAsTab(wt) })
+        if (!wt.isMain) {
+            menu.addSeparator()
+            menu.add(menuItem("Remove Worktree…") {
+                if (confirm("Remove worktree at '${wt.path}'?")) {
+                    val r = git.worktreeRemove(wt.path)
+                    if (!r.success) showError("Remove failed", r.output)
+                    refreshWorktrees()
+                }
+            })
+        }
+        return menu
+    }
+
+    private fun buildAddWorktreeMenu(): JPopupMenu {
+        val menu = JPopupMenu()
+        menu.add(menuItem("Add Worktree…") { showAddWorktreeDialog() })
+        return menu
+    }
+
+    private fun showAddWorktreeDialog() {
+        val pathField   = JTextField(30)
+        val browseBtn   = JButton("Browse…")
+        val branchField = JTextField(20)
+
+        browseBtn.addActionListener {
+            val dir = NativeFileChooser.chooseDirectory(
+                SwingUtilities.getWindowAncestor(this), "Worktree directory"
+            ) ?: return@addActionListener
+            pathField.text = dir.absolutePath
+        }
+
+        val panel = JPanel(GridBagLayout())
+        val gbc   = GridBagConstraints().apply { insets = Insets(4, 4, 4, 4); anchor = GridBagConstraints.WEST }
+
+        gbc.gridx = 0; gbc.gridy = 0; gbc.fill = GridBagConstraints.NONE
+        panel.add(JLabel("Path:"), gbc)
+        gbc.gridx = 1; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.weightx = 1.0
+        panel.add(pathField, gbc)
+        gbc.gridx = 2; gbc.fill = GridBagConstraints.NONE; gbc.weightx = 0.0
+        panel.add(browseBtn, gbc)
+
+        gbc.gridx = 0; gbc.gridy = 1
+        panel.add(JLabel("Branch / commit:"), gbc)
+        gbc.gridx = 1; gbc.gridwidth = 2; gbc.fill = GridBagConstraints.HORIZONTAL
+        panel.add(branchField, gbc)
+
+        val ok = JOptionPane.showConfirmDialog(
+            this, panel, "Add Worktree",
+            JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE
+        )
+        if (ok != JOptionPane.OK_OPTION) return
+        val p = pathField.text.trim(); val b = branchField.text.trim()
+        if (p.isBlank() || b.isBlank()) return
+        val r = git.worktreeAdd(p, b)
+        if (!r.success) showError("Add worktree failed", r.output)
+        refreshWorktrees()
+    }
+
+    private fun mainView(): MainView? =
+        SwingUtilities.getAncestorOfClass(MainView::class.java, this) as? MainView
+
+    private fun openWorktreeAsTab(wt: WorktreeInfo) {
+        val mv         = mainView() ?: return
+        val branchName = wt.branch?.removePrefix("refs/heads/") ?: wt.head.take(7)
+        mv.addTab(RepoTab(wt.path, branchName))
+    }
+
+    fun refreshWorktrees() {
+        sidebarBar.setBusy(true)
+        object : SwingWorker<List<Git.WorktreeEntry>, Void>() {
+            override fun doInBackground() = git.worktreeList()
+            override fun done() {
+                sidebarBar.setBusy(false)
+                val list = try { get() } catch (e: Exception) { emptyList() }
+                applyWorktrees(list)
+            }
+        }.execute()
+    }
+
+    private fun applyWorktrees(entries: List<Git.WorktreeEntry>) {
+        worktreesNode.removeAllChildren()
+        for (e in entries) {
+            worktreesNode.add(DefaultMutableTreeNode(
+                WorktreeInfo(e.path, e.branch, e.head, e.isMain)
+            ))
+        }
+        branchTreeModel.nodeStructureChanged(worktreesNode)
+        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+    }
+
     private fun buildTagPopup(tagName: String): JPopupMenu {
         val menu = JPopupMenu()
         menu.add(menuItem("Checkout") {
@@ -1441,10 +1736,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         val statusOut: String,
         val modifiedCount: Int,
         val unpulledCount: Int,
-        val unpushedCount: Int
+        val unpushedCount: Int,
+        val worktreeEntries: List<Git.WorktreeEntry>
     )
 
     fun refresh() {
+        sidebarBar.setBusy(true)
         object : SwingWorker<RefreshSnapshot, Void>() {
             override fun doInBackground(): RefreshSnapshot {
                 val b  = git.branches()
@@ -1455,29 +1752,36 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 val modified = st.output.lines().count { it.length > 2 && !it.startsWith("##") }
                 val unpulled = git.unpulledCount().output.trim().toIntOrNull() ?: 0
                 val unpushed = git.unpushedCount().output.trim().toIntOrNull() ?: 0
+                val wt = git.worktreeList()
                 return RefreshSnapshot(
                     b.output, b.success, l.output, l.success,
                     if (s.success) s.output else "",
                     if (t.success) t.output else "",
                     st.output,
-                    modified, unpulled, unpushed
+                    modified, unpulled, unpushed,
+                    wt
                 )
             }
             override fun done() {
-                val snap = try { get() } catch (e: Exception) { return }
+                sidebarBar.setBusy(false)
+                val snap = try { get() } catch (e: Exception) { sidebarBar.setBusy(false); return }
                 if (snap.branchOk) applyBranches(snap.branchesOut)
                 if (snap.logOk)    applyCommits(snap.logOut, snap.modifiedCount > 0)
                 applyStashes(snap.stashOut)
                 applyTags(snap.tagsOut)
                 applyFileStatus(snap.statusOut)
+                applyWorktrees(snap.worktreeEntries)
                 commitBtn.badge = snap.modifiedCount
                 pullBtn.badge   = snap.unpulledCount
                 pushBtn.badge   = snap.unpushedCount
+                // Submodule status can be slow (one git-status per submodule) — run separately
+                refreshSubmodules()
             }
         }.execute()
     }
 
     fun refreshBranches() {
+        sidebarBar.setBusy(true)
         object : SwingWorker<Pair<String?, String>, Void>() {
             override fun doInBackground(): Pair<String?, String> {
                 val b = git.branches()
@@ -1485,7 +1789,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 return (b.output.takeIf { b.success }) to (if (t.success) t.output else "")
             }
             override fun done() {
-                val (branchOut, tagsOut) = try { get() } catch (e: Exception) { return }
+                sidebarBar.setBusy(false)
+                val (branchOut, tagsOut) = try { get() } catch (e: Exception) { sidebarBar.setBusy(false); return }
                 if (branchOut != null) applyBranches(branchOut)
                 applyTags(tagsOut)
             }
@@ -1493,10 +1798,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     fun refreshStashes() {
+        sidebarBar.setBusy(true)
         object : SwingWorker<String, Void>() {
             override fun doInBackground() = git.stashList().output
             override fun done() {
-                val out = try { get() } catch (e: Exception) { "" }
+                sidebarBar.setBusy(false)
+                val out = try { get() } catch (e: Exception) { sidebarBar.setBusy(false); "" }
                 applyStashes(out)
             }
         }.execute()

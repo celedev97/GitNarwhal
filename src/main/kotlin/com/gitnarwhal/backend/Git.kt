@@ -287,6 +287,68 @@ class Git(val repo: String) {
     fun reset(target: String, mode: String = "mixed") = git("reset", "--$mode", target)
     //endregion
 
+    //region submodule
+    fun submoduleStatus() = git("submodule", "status")
+
+    /**
+     * True if the submodule at [subPath] (relative to this repo root) has uncommitted
+     * changes in its own working tree.
+     * `git submodule status` only flags a different commit (gitlink mismatch), not a
+     * dirty working tree, so we probe the submodule directly.
+     */
+    fun submoduleDirty(subPath: String): Boolean {
+        val dir = java.io.File(repo, subPath)
+        if (!java.io.File(dir, ".git").exists() &&
+            !java.io.File(dir, ".git").isFile) return false
+        return Command(GIT, "status", "--porcelain", path = dir.absolutePath)
+            .execute().output.isNotBlank()
+    }
+    //endregion
+
+    //region worktree
+    data class WorktreeEntry(
+        val path: String,
+        val head: String,
+        val branch: String?,   // null if bare or detached HEAD
+        val isMain: Boolean
+    )
+
+    fun worktreeList(): List<WorktreeEntry> {
+        val out = git("worktree", "list", "--porcelain")
+        if (!out.success) return emptyList()
+        val entries = mutableListOf<WorktreeEntry>()
+        var path: String? = null
+        var head: String? = null
+        var branch: String? = null
+        var isFirst = true
+        for (raw in out.output.lines()) {
+            val line = raw.trim()
+            when {
+                line.startsWith("worktree ") -> {
+                    // flush previous block
+                    if (path != null && head != null) {
+                        entries += WorktreeEntry(path, head, branch, isFirst)
+                        isFirst = false
+                    }
+                    path = line.removePrefix("worktree "); head = null; branch = null
+                }
+                line.startsWith("HEAD ")     -> head   = line.removePrefix("HEAD ")
+                line.startsWith("branch ")   -> branch = line.removePrefix("branch ")
+            }
+        }
+        // flush last block
+        if (path != null && head != null) entries += WorktreeEntry(path, head, branch, isFirst)
+        return entries
+    }
+
+    fun worktreeAdd(path: String, branchOrCommit: String): Command =
+        git("worktree", "add", path, branchOrCommit)
+
+    fun worktreeRemove(path: String, force: Boolean = false): Command =
+        if (force) git("worktree", "remove", "--force", path)
+        else       git("worktree", "remove", path)
+    //endregion
+
     //region stash / tag
     fun stashList()                       = git("stash", "list")
     fun stashPush(message: String? = null) =
