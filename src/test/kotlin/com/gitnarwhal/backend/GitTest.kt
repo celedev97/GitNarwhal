@@ -827,4 +827,44 @@ class GitTest {
             Settings.diffIgnoreWhitespace = orig
         }
     }
+
+    // ── Worktree ──────────────────────────────────────────────────────────
+
+    @Test @Order(150)
+    fun `worktreeList returns the main worktree flagged isMain`() {
+        val list = git.worktreeList()
+        assertTrue(list.isNotEmpty(), "main worktree should always be listed")
+        val main = list.first()
+        assertTrue(main.isMain, "first entry should be the main worktree")
+        assertEquals(repoDir.canonicalPath, File(main.path).canonicalPath)
+        assertTrue(main.head.isNotBlank(), "main worktree should report a HEAD hash")
+    }
+
+    @Test @Order(151)
+    fun `worktreeAdd creates a linked worktree, then worktreeRemove deletes it`() {
+        val wtDir  = File(repoDir.parentFile, "${repoDir.name}-wt")
+        val branch = "wt-branch"
+        git.createBranch(branch)
+        // `git worktree add <path> <branch>` refuses a branch already checked out in the
+        // main worktree, so switch back to the default branch first.
+        git.selectBranch(defaultBranch)
+        val add = git.worktreeAdd(wtDir.absolutePath, branch)
+        try {
+            assertTrue(add.success, "worktreeAdd should succeed: ${add.output}")
+            val list = git.worktreeList()
+            val added = list.firstOrNull { File(it.path).canonicalPath == wtDir.canonicalPath }
+            assertNotNull(added, "added worktree should appear in the list")
+            assertFalse(added!!.isMain, "linked worktree must not be flagged isMain")
+            assertEquals("refs/heads/$branch", added.branch)
+
+            val remove = git.worktreeRemove(wtDir.absolutePath, force = true)
+            assertTrue(remove.success, "worktreeRemove should succeed: ${remove.output}")
+            assertNull(
+                git.worktreeList().firstOrNull { File(it.path).canonicalPath == wtDir.canonicalPath },
+                "removed worktree should no longer be listed"
+            )
+        } finally {
+            wtDir.deleteRecursively()
+        }
+    }
 }

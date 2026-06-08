@@ -344,6 +344,50 @@ class Git(val repo: String) {
     fun pushDeleteTag(remote: String, tag: String)       = git("push", remote, "--delete", tag)
     //endregion
 
+    //region worktree
+    data class WorktreeEntry(
+        val path: String,
+        val head: String,
+        val branch: String?,   // null if bare or detached HEAD
+        val isMain: Boolean
+    )
+
+    fun worktreeList(): List<WorktreeEntry> {
+        val out = git("worktree", "list", "--porcelain")
+        if (!out.success) return emptyList()
+        val entries = mutableListOf<WorktreeEntry>()
+        var path: String? = null
+        var head: String? = null
+        var branch: String? = null
+        var isFirst = true
+        for (raw in out.output.lines()) {
+            val line = raw.trim()
+            when {
+                line.startsWith("worktree ") -> {
+                    // flush previous block
+                    if (path != null && head != null) {
+                        entries += WorktreeEntry(path, head, branch, isFirst)
+                        isFirst = false
+                    }
+                    path = line.removePrefix("worktree "); head = null; branch = null
+                }
+                line.startsWith("HEAD ")     -> head   = line.removePrefix("HEAD ")
+                line.startsWith("branch ")   -> branch = line.removePrefix("branch ")
+            }
+        }
+        // flush last block
+        if (path != null && head != null) entries += WorktreeEntry(path, head, branch, isFirst)
+        return entries
+    }
+
+    fun worktreeAdd(path: String, branchOrCommit: String): Command =
+        git("worktree", "add", path, branchOrCommit)
+
+    fun worktreeRemove(path: String, force: Boolean = false): Command =
+        if (force) git("worktree", "remove", "--force", path)
+        else       git("worktree", "remove", path)
+    //endregion
+
     //region init / clone (static-style helpers — no repo context required)
     object Static {
         fun init(path: String) = Command(GIT, "init", path = path).execute()
