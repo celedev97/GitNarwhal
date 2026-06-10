@@ -726,16 +726,24 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         // ── Conflict banner ───────────────────────────────────────────────────
         conflictContinueBtn.addActionListener {
-            val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
-                           java.io.File(git.repo, ".git/rebase-apply").exists()
-            if (isRebase) runWithProgress("Continuing rebase…") { git.rebaseContinue() }
-            else commitMsgField.requestFocus()
+            val isRebase     = java.io.File(git.repo, ".git/rebase-merge").exists() ||
+                               java.io.File(git.repo, ".git/rebase-apply").exists()
+            val isCherryPick = java.io.File(git.repo, ".git/CHERRY_PICK_HEAD").exists()
+            when {
+                isRebase     -> runWithProgress("Continuing rebase…")       { git.rebaseContinue()     }
+                isCherryPick -> runWithProgress("Continuing cherry-pick…")  { git.cherryPickContinue() }
+                else         -> commitMsgField.requestFocus()
+            }
         }
         conflictAbortBtn.addActionListener {
-            val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
-                           java.io.File(git.repo, ".git/rebase-apply").exists()
-            if (isRebase) runWithProgress("Aborting rebase…")  { git.rebaseAbort()  }
-            else          runWithProgress("Aborting merge…")   { git.mergeAbort()   }
+            val isRebase     = java.io.File(git.repo, ".git/rebase-merge").exists() ||
+                               java.io.File(git.repo, ".git/rebase-apply").exists()
+            val isCherryPick = java.io.File(git.repo, ".git/CHERRY_PICK_HEAD").exists()
+            when {
+                isRebase     -> runWithProgress("Aborting rebase…")       { git.rebaseAbort()     }
+                isCherryPick -> runWithProgress("Aborting cherry-pick…")  { git.cherryPickAbort() }
+                else         -> runWithProgress("Aborting merge…")        { git.mergeAbort()      }
+            }
             refresh()
         }
         conflictBanner.apply {
@@ -851,13 +859,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         // Update conflict banner
         if (conflictFiles.isNotEmpty()) {
-            val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
-                           java.io.File(git.repo, ".git/rebase-apply").exists()
-            val op = if (isRebase) "Rebase" else "Merge"
+            val isRebase      = java.io.File(git.repo, ".git/rebase-merge").exists() ||
+                                java.io.File(git.repo, ".git/rebase-apply").exists()
+            val isCherryPick  = java.io.File(git.repo, ".git/CHERRY_PICK_HEAD").exists()
+            val op = when { isRebase -> "Rebase"; isCherryPick -> "Cherry-pick"; else -> "Merge" }
             conflictBannerLabel.text = "⚠  $op in progress — ${conflictFiles.size} conflict(s)"
-            conflictContinueBtn.text = if (isRebase) "Continue Rebase" else "Commit Merge"
+            conflictContinueBtn.text = when { isRebase -> "Continue Rebase"; isCherryPick -> "Continue Cherry-pick"; else -> "Commit Merge" }
             conflictBanner.isVisible = true
-            if (commitMsgField.text.isBlank()) {
+            if (commitMsgField.text.isBlank() && !isCherryPick) {
                 val mergeMsg = java.io.File(git.repo, ".git/MERGE_MSG")
                 if (mergeMsg.exists()) commitMsgField.text = mergeMsg.readText()
             }
@@ -2763,7 +2772,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     fun openRemote()   = Thread { (OS.BROWSER  + git.remoteUrl().output).execute() }.start()
 
     fun selectCommit(hash: String) {
-        val idx = filteredCommits.indexOfFirst { it.hash == hash }
+        val idx = filteredCommits.indexOfFirst { it.hash == hash || it.hash.startsWith(hash) || hash.startsWith(it.hash) }
         if (idx >= 0) {
             switchCard(CARD_HISTORY)
             commitTable.selectionModel.setSelectionInterval(idx, idx)
@@ -2825,6 +2834,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     // ── File blame ────────────────────────────────────────────────────────────
 
+    private data class BlameLine(
+        val hash: String,
+        val author: String,
+        val date: String,
+        val lineNum: Int,
+        val code: String
+    )
+
     private fun showBlame(file: String, rev: String?) {
         diffFileNameLabel.text = "$file  (blame)"
         object : SwingWorker<String, Void>() {
@@ -2837,13 +2854,122 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }.execute()
     }
 
-    private fun buildBlameView(blameOutput: String): JTextArea =
-        JTextArea(blameOutput).apply {
+    private fun buildBlameView(blameOutput: String): JComponent {
+        val regex = Regex("""^(\^?[0-9a-f]+)\s+\((.+?)\s+(\d{4}-\d{2}-\d{2})\s+(\d+)\)\s?(.*)$""")
+        val lines = blameOutput.lines().mapNotNull { line ->
+            val m = regex.find(line) ?: return@mapNotNull null
+            BlameLine(
+                hash    = m.groupValues[1].trimStart('^'),
+                author  = m.groupValues[2].trim(),
+                date    = m.groupValues[3],
+                lineNum = m.groupValues[4].toIntOrNull() ?: 0,
+                code    = m.groupValues[5]
+            )
+        }
+        if (lines.isEmpty()) return JTextArea(blameOutput).apply {
             isEditable = false
             font       = Font(com.gitnarwhal.utils.Settings.diffFontFamily, Font.PLAIN, com.gitnarwhal.utils.Settings.diffFontSize)
             background = UIManager.getColor("EditorPane.background") ?: Color(0x2B, 0x2B, 0x2B)
             foreground = UIManager.getColor("Label.foreground") ?: Color.WHITE
         }
+
+        val bgColor   = UIManager.getColor("EditorPane.background")     ?: Color(0x2B, 0x2B, 0x2B)
+        val fgColor   = UIManager.getColor("Label.foreground")           ?: Color.WHITE
+        val mutedFg   = UIManager.getColor("Label.disabledForeground")   ?: Color.GRAY
+        val selBg     = UIManager.getColor("List.selectionBackground")   ?: Color(0x26, 0x4F, 0x78)
+        val monoFont  = Font(com.gitnarwhal.utils.Settings.diffFontFamily, Font.PLAIN, com.gitnarwhal.utils.Settings.diffFontSize)
+
+        val hashColors = LinkedHashMap<String, Color>()
+        var ci = 0
+        lines.forEach { hashColors.getOrPut(it.hash) { GRAPH_PALETTE[ci++ % GRAPH_PALETTE.size] } }
+
+        val maxLn  = lines.maxOf { it.lineNum }.toString().length
+
+        val model = DefaultListModel<BlameLine>().apply { lines.forEach { addElement(it) } }
+
+        val cellH = monoFont.size + 6
+
+        val list = object : JList<BlameLine>(model), Scrollable {
+            override fun getPreferredScrollableViewportSize() = preferredSize
+            override fun getScrollableUnitIncrement(r: Rectangle, o: Int, d: Int) = cellH
+            override fun getScrollableBlockIncrement(r: Rectangle, o: Int, d: Int) = r.height
+            override fun getScrollableTracksViewportWidth()  = true
+            override fun getScrollableTracksViewportHeight() = false
+        }
+        list.selectionMode    = ListSelectionModel.SINGLE_SELECTION
+        list.background       = bgColor
+        list.fixedCellHeight  = cellH
+
+        list.setCellRenderer(object : ListCellRenderer<BlameLine> {
+            private val stamp = object : JComponent() {
+                var entry: BlameLine? = null
+                var selected = false
+
+                override fun paintComponent(g: Graphics) {
+                    val bl = entry ?: return
+                    val g2 = g.create() as Graphics2D
+                    g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                        RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+                    g2.font = monoFont
+                    val fm = g2.fontMetrics
+
+                    g2.color = if (selected) selBg else bgColor
+                    g2.fillRect(0, 0, width, height)
+
+                    val y = fm.ascent + (height - fm.height) / 2
+                    var x = 4
+
+                    g2.color = hashColors[bl.hash] ?: Color.GRAY
+                    val hashStr = bl.hash.take(8)
+                    g2.drawString(hashStr, x, y)
+                    x += fm.stringWidth(hashStr) + fm.charWidth(' ')
+
+                    g2.color = mutedFg
+                    val authorStr = bl.author.take(14).padEnd(15)
+                    g2.drawString(authorStr, x, y)
+                    x += fm.stringWidth(authorStr)
+
+                    val dateStr = "${bl.date}  "
+                    g2.drawString(dateStr, x, y)
+                    x += fm.stringWidth(dateStr)
+
+                    val lnStr = bl.lineNum.toString().padStart(maxLn)
+                    g2.drawString(lnStr, x, y)
+                    x += fm.stringWidth(lnStr)
+
+                    g2.color = mutedFg
+                    val sep = " │ "
+                    g2.drawString(sep, x, y)
+                    x += fm.stringWidth(sep)
+
+                    g2.color = fgColor
+                    g2.drawString(bl.code, x, y)
+
+                    g2.dispose()
+                }
+            }
+
+            override fun getListCellRendererComponent(
+                list: JList<out BlameLine>, value: BlameLine,
+                index: Int, isSelected: Boolean, cellHasFocus: Boolean
+            ): Component {
+                stamp.entry    = value
+                stamp.selected = isSelected
+                stamp.preferredSize = Dimension(list.width.coerceAtLeast(1), cellH)
+                return stamp
+            }
+        })
+
+        list.toolTipText = "Click a line to navigate to its commit in History"
+        list.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                val idx = list.locationToIndex(e.point)
+                if (idx >= 0) selectCommit(model.getElementAt(idx).hash)
+            }
+        })
+
+        return list
+    }
 
     private fun menuItem(text: String, action: () -> Unit) =
         JMenuItem(text).apply { addActionListener { action() } }

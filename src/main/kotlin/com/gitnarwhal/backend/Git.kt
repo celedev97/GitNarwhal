@@ -291,8 +291,10 @@ class Git(val repo: String) {
         args += "--"; args += path
         return git(*args.toTypedArray())
     }
-    fun cherryPick(hash: String) = git("cherry-pick", hash)
-    fun revert(hash: String)   = git("revert", "--no-edit", hash)
+    fun cherryPick(hash: String)       = git("cherry-pick", hash)
+    fun cherryPickContinue()           = git("cherry-pick", "--continue", "--no-edit")
+    fun cherryPickAbort()              = git("cherry-pick", "--abort")
+    fun revert(hash: String)           = git("revert", "--no-edit", hash)
     fun reset(target: String, mode: String = "mixed") = git("reset", "--$mode", target)
     //endregion
 
