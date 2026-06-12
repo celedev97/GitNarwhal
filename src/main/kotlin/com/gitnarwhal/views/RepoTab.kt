@@ -95,7 +95,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private data class BranchInfo(
         val fullName: String, val leafName: String,
         val isActive: Boolean, val tracking: String? = null,
-        val ahead: Int = 0, val behind: Int = 0
+        val ahead: Int = 0, val behind: Int = 0,
+        val isInWorktree: Boolean = false
     )
     private data class TagInfo(val name: String)
     private data class StashInfo(val index: Int, val description: String)
@@ -1327,7 +1328,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                         if (obj.behind > 0) append(" ↓${obj.behind}")
                     }
                     text = obj.leafName + aheadBehind
-                    font = font.deriveFont(if (obj.isActive) Font.BOLD else Font.PLAIN)
+                    font = font.deriveFont(when {
+                        obj.isActive     -> Font.BOLD
+                        obj.isInWorktree -> Font.ITALIC
+                        else             -> Font.PLAIN
+                    })
                     icon = null
                 }
                 is TagInfo -> {
@@ -1341,9 +1346,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     icon = null
                 }
                 is WorktreeInfo -> {
+                    val isCurrent = runCatching {
+                        java.io.File(obj.path).canonicalPath == java.io.File(path).canonicalPath
+                    }.getOrDefault(obj.path == path)
                     text        = obj.branch?.removePrefix("refs/heads/") ?: "(bare)"
                     toolTipText = obj.path
-                    font        = font.deriveFont(Font.PLAIN)
+                    font        = font.deriveFont(if (isCurrent) Font.BOLD else Font.PLAIN)
                     icon        = FontIcon.of(MaterialDesign.MDI_FOLDER_OUTLINE, 14, fg)
                 }
                 is SubmoduleInfo -> {
@@ -2264,8 +2272,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         remoteBranchesNode.removeAllChildren()
         for (line in output.lines()) {
             if (line.isBlank()) continue
-            val isActive = line.startsWith("*")
-            val cleaned  = line.removePrefix("*").trim()
+            val isActive   = line.startsWith("*")
+            val inWorktree = !isActive && line.startsWith("+")
+            val cleaned    = line.removePrefix("*").removePrefix("+").trim()
             val parts    = cleaned.replace("\\s+".toRegex(), " ").split(" ")
             val fullName = parts[0]
             if (cleaned.contains(" -> ")) continue
@@ -2276,7 +2285,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 val tracking = "^\\[([^\\]:]+)".toRegex().find(rest)?.groups?.get(1)?.value
                 val ahead    = "ahead (\\d+)".toRegex().find(rest)?.groupValues?.get(1)?.toIntOrNull() ?: 0
                 val behind   = "behind (\\d+)".toRegex().find(rest)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                insertBranch(localBranchesNode, fullName, isActive, tracking, ahead, behind)
+                insertBranch(localBranchesNode, fullName, isActive, tracking, ahead, behind, inWorktree)
             }
         }
         branchTreeModel.reload()
@@ -2284,7 +2293,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     private fun insertBranch(parent: DefaultMutableTreeNode, path: String, active: Boolean,
-                             tracking: String?, ahead: Int = 0, behind: Int = 0) {
+                             tracking: String?, ahead: Int = 0, behind: Int = 0, inWorktree: Boolean = false) {
         val segs    = path.split("/")
         var current = parent
         for (i in 0 until segs.size - 1) {
@@ -2294,7 +2303,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 .firstOrNull { it.userObject == seg }
                 ?: DefaultMutableTreeNode(seg).also { current.add(it) }
         }
-        current.add(DefaultMutableTreeNode(BranchInfo(path, segs.last(), active, tracking, ahead, behind)))
+        current.add(DefaultMutableTreeNode(BranchInfo(path, segs.last(), active, tracking, ahead, behind, inWorktree)))
     }
 
     /**
