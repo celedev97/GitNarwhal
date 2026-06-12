@@ -14,6 +14,7 @@ import com.gitnarwhal.utils.Command
 import com.gitnarwhal.utils.NativeFileChooser
 import com.gitnarwhal.utils.OS
 import com.gitnarwhal.utils.Settings
+import com.gitnarwhal.utils.save
 import org.json.JSONObject
 import org.kordamp.ikonli.Ikon
 import org.kordamp.ikonli.materialdesign.MaterialDesign
@@ -44,6 +45,7 @@ import javax.swing.table.AbstractTableModel
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeCellRenderer
 import javax.swing.tree.DefaultTreeModel
+import javax.swing.tree.TreePath
 import javax.swing.tree.TreeSelectionModel
 
 class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
@@ -247,6 +249,19 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     is StashInfo  -> previewStash(obj.index)
                 }
             }
+            addTreeExpansionListener(object : javax.swing.event.TreeExpansionListener {
+                override fun treeExpanded(event: javax.swing.event.TreeExpansionEvent)  = saveSectionExpansion(event, true)
+                override fun treeCollapsed(event: javax.swing.event.TreeExpansionEvent) = saveSectionExpansion(event, false)
+                private fun saveSectionExpansion(event: javax.swing.event.TreeExpansionEvent, expanded: Boolean) {
+                    val node = event.path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                    if (node.parent != branchRoot) return
+                    val label = node.userObject as? String ?: return
+                    val sections = Settings.sidebarSections
+                    val obj = sections.optJSONObject(path) ?: JSONObject().also { sections.put(path, it) }
+                    obj.put(label, expanded)
+                    Settings.save()
+                }
+            })
         }
 
         // History view: commit table above, detail panel below
@@ -1512,6 +1527,24 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     // ── Sidebar ───────────────────────────────────────────────────────────────
 
+    private fun restoreSidebarExpansion() {
+        val saved = Settings.sidebarSections.optJSONObject(path) ?: JSONObject()
+        val sections = mapOf(
+            "BRANCHES"   to localBranchesNode,
+            "TAGS"       to tagsNode,
+            "REMOTES"    to remoteBranchesNode,
+            "STASHES"    to stashesNode,
+            "SUBMODULES" to submodulesNode,
+            "WORKTREES"  to worktreesNode
+        )
+        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        for ((name, node) in sections) {
+            if (!saved.optBoolean(name, true)) {
+                branchTree.collapsePath(TreePath(node.path))
+            }
+        }
+    }
+
     private fun buildSidebar(): JPanel {
         val panel = JPanel(BorderLayout())
 
@@ -1976,7 +2009,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         submodulesNode.removeAllChildren()
         for (info in allSubmodules) insertSubmoduleNode(info)
         branchTreeModel.nodeStructureChanged(submodulesNode)
-        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        restoreSidebarExpansion()
     }
 
     /**
@@ -2289,7 +2322,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             }
         }
         branchTreeModel.reload()
-        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        restoreSidebarExpansion()
     }
 
     private fun insertBranch(parent: DefaultMutableTreeNode, path: String, active: Boolean,
@@ -2614,7 +2647,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             idx++
         }
         branchTreeModel.nodeStructureChanged(stashesNode)
-        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        restoreSidebarExpansion()
     }
 
     private fun applyTags(output: String) {
@@ -2624,7 +2657,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             if (name.isNotBlank()) tagsNode.add(DefaultMutableTreeNode(TagInfo(name)))
         }
         branchTreeModel.nodeStructureChanged(tagsNode)
-        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        restoreSidebarExpansion()
     }
 
     private fun applyWorktrees(entries: List<Git.WorktreeEntry>) {
@@ -2635,7 +2668,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             ))
         }
         branchTreeModel.nodeStructureChanged(worktreesNode)
-        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        restoreSidebarExpansion()
     }
 
     // ── Toolbar git actions ───────────────────────────────────────────────────
