@@ -3,6 +3,8 @@ package com.gitnarwhal.components
 import java.awt.*
 import java.awt.event.MouseAdapter
 import javax.swing.*
+import javax.swing.text.SimpleAttributeSet
+import javax.swing.text.StyleConstants
 
 /**
  * In-app progress overlay: replaces ProgressDialog with a glass-pane overlay
@@ -16,16 +18,18 @@ import javax.swing.*
  */
 class ProgressOverlay : JPanel(null) {
 
+    // ANSI parser state — persists across appendOutput calls to handle multi-line streams
+    private var ansiFg: Color? = null
+    private var ansiBold = false
+
     private val statusLabel  = JLabel("Working…")
     private val progressBar  = JProgressBar().apply { isIndeterminate = true }
     private val showOutputCk = JCheckBox("Show output")
-    private val outputArea   = JTextArea(8, 60).apply {
-        isEditable    = false
-        font          = Font(Font.MONOSPACED, Font.PLAIN, 12)
-        lineWrap      = true
-        wrapStyleWord = false
+    private val outputPane   = JTextPane().apply {
+        isEditable = false
+        font       = Font(Font.MONOSPACED, Font.PLAIN, 12)
     }
-    private val outputScroll = JScrollPane(outputArea).apply { isVisible = false }
+    private val outputScroll = JScrollPane(outputPane).apply { isVisible = false }
     private val closeBtn     = JButton("Close").apply { isEnabled = false }
 
     private val card = JPanel(BorderLayout(0, 8)).apply {
@@ -81,7 +85,8 @@ class ProgressOverlay : JPanel(null) {
         closeBtn.isEnabled        = false
         outputScroll.isVisible    = false
         showOutputCk.isSelected   = false
-        outputArea.text           = ""
+        outputPane.text           = ""
+        ansiFg = null; ansiBold = false
 
         savedGlassPane = rp.glassPane
         rp.glassPane   = this
@@ -93,8 +98,10 @@ class ProgressOverlay : JPanel(null) {
         progressBar.isIndeterminate = false
         progressBar.value      = 100
         statusLabel.text       = if (success) "Done." else "Failed."
-        outputArea.text        = output.trim()
-        outputArea.caretPosition = 0
+        ansiFg = null; ansiBold = false
+        outputPane.text = ""
+        appendAnsiText(output.trim())
+        outputPane.caretPosition = 0
         closeBtn.isEnabled     = true
 
         if (!success || showOutputCk.isSelected) {
@@ -112,8 +119,56 @@ class ProgressOverlay : JPanel(null) {
             outputScroll.isVisible = true
             repositionCard()
         }
-        outputArea.append(line + "\n")
-        outputArea.caretPosition = outputArea.document.length
+        appendAnsiText(line + "\n")
+        outputPane.caretPosition = outputPane.document.length
+    }
+
+    private val ansiRegex = Regex("""\[([\d;]*)m""")
+
+    private fun appendAnsiText(text: String) {
+        var pos = 0
+        for (match in ansiRegex.findAll(text)) {
+            if (match.range.first > pos) insertStyled(text.substring(pos, match.range.first))
+            applyAnsiCode(match.groupValues[1])
+            pos = match.range.last + 1
+        }
+        if (pos < text.length) insertStyled(text.substring(pos))
+    }
+
+    private fun applyAnsiCode(params: String) {
+        val codes = if (params.isEmpty()) listOf(0) else params.split(";").mapNotNull { it.toIntOrNull() }
+        for (code in codes) {
+            when (code) {
+                0    -> { ansiFg = null; ansiBold = false }
+                1    -> ansiBold = true
+                22   -> ansiBold = false
+                30   -> ansiFg = Color(0x1C, 0x1C, 0x1C)
+                31   -> ansiFg = Color(0xCC, 0x00, 0x00)
+                32   -> ansiFg = Color(0x00, 0xAA, 0x00)
+                33   -> ansiFg = Color(0xAA, 0xAA, 0x00)
+                34   -> ansiFg = Color(0x00, 0x55, 0xCC)
+                35   -> ansiFg = Color(0xAA, 0x00, 0xAA)
+                36   -> ansiFg = Color(0x00, 0xAA, 0xAA)
+                37   -> ansiFg = Color(0xCC, 0xCC, 0xCC)
+                39   -> ansiFg = null
+                90   -> ansiFg = Color(0x88, 0x88, 0x88)
+                91   -> ansiFg = Color(0xFF, 0x55, 0x55)
+                92   -> ansiFg = Color(0x55, 0xFF, 0x55)
+                93   -> ansiFg = Color(0xFF, 0xFF, 0x55)
+                94   -> ansiFg = Color(0x55, 0x55, 0xFF)
+                95   -> ansiFg = Color(0xFF, 0x55, 0xFF)
+                96   -> ansiFg = Color(0x55, 0xFF, 0xFF)
+                97   -> ansiFg = Color(0xFF, 0xFF, 0xFF)
+            }
+        }
+    }
+
+    private fun insertStyled(text: String) {
+        val attrs = SimpleAttributeSet()
+        ansiFg?.let { StyleConstants.setForeground(attrs, it) }
+        if (ansiBold) StyleConstants.setBold(attrs, true)
+        val doc = outputPane.styledDocument
+        doc.insertString(doc.length, text, attrs)
     }
 
     /** Call instead of [finish] when output was already streamed via [appendOutput]. */
