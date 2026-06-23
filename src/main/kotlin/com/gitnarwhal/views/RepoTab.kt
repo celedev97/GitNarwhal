@@ -1417,7 +1417,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             when (val obj = node.userObject) {
                 is BranchInfo -> {
                     val isLocal = tp.path.any { it === localBranchesNode }
-                    buildBranchPopup(obj.fullName, isLocal).show(branchTree, e.x, e.y)
+                    buildBranchPopup(obj.fullName, isLocal, obj.tracking).show(branchTree, e.x, e.y)
                 }
                 is TagInfo       -> buildTagPopup(obj.name).show(branchTree, e.x, e.y)
                 is StashInfo     -> buildStashTreePopup(obj.index).show(branchTree, e.x, e.y)
@@ -1442,7 +1442,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }
     }
 
-    private fun buildBranchPopup(branchFullName: String, isLocal: Boolean = false): JPopupMenu {
+    private fun buildBranchPopup(branchFullName: String, isLocal: Boolean = false, tracking: String? = null): JPopupMenu {
         val menu = JPopupMenu()
         menu.add(menuItem("Checkout") { checkoutBranch(branchFullName) })
         if (isLocal && isHeadDetached) {
@@ -1467,6 +1467,48 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             }
         })
         menu.addSeparator()
+        if (isLocal) {
+            if (tracking != null) {
+                val trackParts   = tracking.split("/", limit = 2)
+                val remote       = trackParts[0]
+                val remoteBranch = if (trackParts.size > 1) trackParts[1] else branchFullName
+                menu.add(menuItem("Push to $tracking") {
+                    val rp = SwingUtilities.getRootPane(this) ?: return@menuItem
+                    val overlay = ProgressOverlay()
+                    object : SwingWorker<Boolean, String>() {
+                        override fun doInBackground(): Boolean {
+                            val r = git.pushRefspecStream(remote, branchFullName, remoteBranch, force = false, setUpstream = false) { publish(it) }
+                            return r.success
+                        }
+                        override fun process(chunks: List<String>) { chunks.forEach { overlay.appendOutput(it) } }
+                        override fun done() {
+                            val ok = try { get() } catch (_: Exception) { false }
+                            overlay.finishStreaming(ok); refresh()
+                        }
+                    }.execute()
+                    overlay.show(rp, "Pushing to $tracking…")
+                })
+                menu.add(menuItem("Pull from $tracking") {
+                    val rp = SwingUtilities.getRootPane(this) ?: return@menuItem
+                    val overlay = ProgressOverlay()
+                    object : SwingWorker<Boolean, String>() {
+                        override fun doInBackground(): Boolean {
+                            val r = git.pullStream(remote, remoteBranch) { publish(it) }
+                            return r.success
+                        }
+                        override fun process(chunks: List<String>) { chunks.forEach { overlay.appendOutput(it) } }
+                        override fun done() {
+                            val ok = try { get() } catch (_: Exception) { false }
+                            overlay.finishStreaming(ok); refresh()
+                        }
+                    }.execute()
+                    overlay.show(rp, "Pulling from $tracking…")
+                })
+            } else {
+                menu.add(menuItem("Push…") { push() })
+            }
+            menu.addSeparator()
+        }
         menu.add(menuItem("Rename…") {
             val newName = JOptionPane.showInputDialog(this, "New name:", branchFullName)
                 ?.takeIf { it.isNotBlank() } ?: return@menuItem
