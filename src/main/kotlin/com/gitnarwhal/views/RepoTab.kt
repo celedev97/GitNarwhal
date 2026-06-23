@@ -14,6 +14,7 @@ import com.gitnarwhal.utils.Command
 import com.gitnarwhal.utils.NativeFileChooser
 import com.gitnarwhal.utils.OS
 import com.gitnarwhal.utils.Settings
+import com.gitnarwhal.utils.save
 import org.json.JSONObject
 import org.kordamp.ikonli.Ikon
 import org.kordamp.ikonli.materialdesign.MaterialDesign
@@ -44,6 +45,7 @@ import javax.swing.table.AbstractTableModel
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeCellRenderer
 import javax.swing.tree.DefaultTreeModel
+import javax.swing.tree.TreePath
 import javax.swing.tree.TreeSelectionModel
 
 class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
@@ -95,7 +97,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private data class BranchInfo(
         val fullName: String, val leafName: String,
         val isActive: Boolean, val tracking: String? = null,
-        val ahead: Int = 0, val behind: Int = 0
+        val ahead: Int = 0, val behind: Int = 0,
+        val isInWorktree: Boolean = false
     )
     private data class TagInfo(val name: String)
     private data class StashInfo(val index: Int, val description: String)
@@ -246,6 +249,19 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     is StashInfo  -> previewStash(obj.index)
                 }
             }
+            addTreeExpansionListener(object : javax.swing.event.TreeExpansionListener {
+                override fun treeExpanded(event: javax.swing.event.TreeExpansionEvent)  = saveSectionExpansion(event, true)
+                override fun treeCollapsed(event: javax.swing.event.TreeExpansionEvent) = saveSectionExpansion(event, false)
+                private fun saveSectionExpansion(event: javax.swing.event.TreeExpansionEvent, expanded: Boolean) {
+                    val node = event.path.lastPathComponent as? DefaultMutableTreeNode ?: return
+                    if (node.parent != branchRoot) return
+                    val label = node.userObject as? String ?: return
+                    val sections = Settings.sidebarSections
+                    val obj = sections.optJSONObject(path) ?: JSONObject().also { sections.put(path, it) }
+                    obj.put(label, expanded)
+                    Settings.save()
+                }
+            })
         }
 
         // History view: commit table above, detail panel below
@@ -726,16 +742,24 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         // ── Conflict banner ───────────────────────────────────────────────────
         conflictContinueBtn.addActionListener {
-            val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
-                           java.io.File(git.repo, ".git/rebase-apply").exists()
-            if (isRebase) runWithProgress("Continuing rebase…") { git.rebaseContinue() }
-            else commitMsgField.requestFocus()
+            val isRebase     = java.io.File(git.repo, ".git/rebase-merge").exists() ||
+                               java.io.File(git.repo, ".git/rebase-apply").exists()
+            val isCherryPick = java.io.File(git.repo, ".git/CHERRY_PICK_HEAD").exists()
+            when {
+                isRebase     -> runWithProgress("Continuing rebase…")       { git.rebaseContinue()     }
+                isCherryPick -> runWithProgress("Continuing cherry-pick…")  { git.cherryPickContinue() }
+                else         -> commitMsgField.requestFocus()
+            }
         }
         conflictAbortBtn.addActionListener {
-            val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
-                           java.io.File(git.repo, ".git/rebase-apply").exists()
-            if (isRebase) runWithProgress("Aborting rebase…")  { git.rebaseAbort()  }
-            else          runWithProgress("Aborting merge…")   { git.mergeAbort()   }
+            val isRebase     = java.io.File(git.repo, ".git/rebase-merge").exists() ||
+                               java.io.File(git.repo, ".git/rebase-apply").exists()
+            val isCherryPick = java.io.File(git.repo, ".git/CHERRY_PICK_HEAD").exists()
+            when {
+                isRebase     -> runWithProgress("Aborting rebase…")       { git.rebaseAbort()     }
+                isCherryPick -> runWithProgress("Aborting cherry-pick…")  { git.cherryPickAbort() }
+                else         -> runWithProgress("Aborting merge…")        { git.mergeAbort()      }
+            }
             refresh()
         }
         conflictBanner.apply {
@@ -851,13 +875,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
         // Update conflict banner
         if (conflictFiles.isNotEmpty()) {
-            val isRebase = java.io.File(git.repo, ".git/rebase-merge").exists() ||
-                           java.io.File(git.repo, ".git/rebase-apply").exists()
-            val op = if (isRebase) "Rebase" else "Merge"
+            val isRebase      = java.io.File(git.repo, ".git/rebase-merge").exists() ||
+                                java.io.File(git.repo, ".git/rebase-apply").exists()
+            val isCherryPick  = java.io.File(git.repo, ".git/CHERRY_PICK_HEAD").exists()
+            val op = when { isRebase -> "Rebase"; isCherryPick -> "Cherry-pick"; else -> "Merge" }
             conflictBannerLabel.text = "⚠  $op in progress — ${conflictFiles.size} conflict(s)"
-            conflictContinueBtn.text = if (isRebase) "Continue Rebase" else "Commit Merge"
+            conflictContinueBtn.text = when { isRebase -> "Continue Rebase"; isCherryPick -> "Continue Cherry-pick"; else -> "Commit Merge" }
             conflictBanner.isVisible = true
-            if (commitMsgField.text.isBlank()) {
+            if (commitMsgField.text.isBlank() && !isCherryPick) {
                 val mergeMsg = java.io.File(git.repo, ".git/MERGE_MSG")
                 if (mergeMsg.exists()) commitMsgField.text = mergeMsg.readText()
             }
@@ -1318,7 +1343,11 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                         if (obj.behind > 0) append(" ↓${obj.behind}")
                     }
                     text = obj.leafName + aheadBehind
-                    font = font.deriveFont(if (obj.isActive) Font.BOLD else Font.PLAIN)
+                    font = font.deriveFont(when {
+                        obj.isActive     -> Font.BOLD
+                        obj.isInWorktree -> Font.ITALIC
+                        else             -> Font.PLAIN
+                    })
                     icon = null
                 }
                 is TagInfo -> {
@@ -1332,9 +1361,12 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                     icon = null
                 }
                 is WorktreeInfo -> {
+                    val isCurrent = runCatching {
+                        java.io.File(obj.path).canonicalPath == java.io.File(path).canonicalPath
+                    }.getOrDefault(obj.path == path)
                     text        = obj.branch?.removePrefix("refs/heads/") ?: "(bare)"
                     toolTipText = obj.path
-                    font        = font.deriveFont(Font.PLAIN)
+                    font        = font.deriveFont(if (isCurrent) Font.BOLD else Font.PLAIN)
                     icon        = FontIcon.of(MaterialDesign.MDI_FOLDER_OUTLINE, 14, fg)
                 }
                 is SubmoduleInfo -> {
@@ -1536,6 +1568,24 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     }
 
     // ── Sidebar ───────────────────────────────────────────────────────────────
+
+    private fun restoreSidebarExpansion() {
+        val saved = Settings.sidebarSections.optJSONObject(path) ?: JSONObject()
+        val sections = mapOf(
+            "BRANCHES"   to localBranchesNode,
+            "TAGS"       to tagsNode,
+            "REMOTES"    to remoteBranchesNode,
+            "STASHES"    to stashesNode,
+            "SUBMODULES" to submodulesNode,
+            "WORKTREES"  to worktreesNode
+        )
+        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        for ((name, node) in sections) {
+            if (!saved.optBoolean(name, true)) {
+                branchTree.collapsePath(TreePath(node.path))
+            }
+        }
+    }
 
     private fun buildSidebar(): JPanel {
         val panel = JPanel(BorderLayout())
@@ -2001,7 +2051,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         submodulesNode.removeAllChildren()
         for (info in allSubmodules) insertSubmoduleNode(info)
         branchTreeModel.nodeStructureChanged(submodulesNode)
-        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        restoreSidebarExpansion()
     }
 
     /**
@@ -2297,8 +2347,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         remoteBranchesNode.removeAllChildren()
         for (line in output.lines()) {
             if (line.isBlank()) continue
-            val isActive = line.startsWith("*")
-            val cleaned  = line.removePrefix("*").trim()
+            val isActive   = line.startsWith("*")
+            val inWorktree = !isActive && line.startsWith("+")
+            val cleaned    = line.removePrefix("*").removePrefix("+").trim()
             val parts    = cleaned.replace("\\s+".toRegex(), " ").split(" ")
             val fullName = parts[0]
             if (cleaned.contains(" -> ")) continue
@@ -2309,15 +2360,15 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 val tracking = "^\\[([^\\]:]+)".toRegex().find(rest)?.groups?.get(1)?.value
                 val ahead    = "ahead (\\d+)".toRegex().find(rest)?.groupValues?.get(1)?.toIntOrNull() ?: 0
                 val behind   = "behind (\\d+)".toRegex().find(rest)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-                insertBranch(localBranchesNode, fullName, isActive, tracking, ahead, behind)
+                insertBranch(localBranchesNode, fullName, isActive, tracking, ahead, behind, inWorktree)
             }
         }
         branchTreeModel.reload()
-        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        restoreSidebarExpansion()
     }
 
     private fun insertBranch(parent: DefaultMutableTreeNode, path: String, active: Boolean,
-                             tracking: String?, ahead: Int = 0, behind: Int = 0) {
+                             tracking: String?, ahead: Int = 0, behind: Int = 0, inWorktree: Boolean = false) {
         val segs    = path.split("/")
         var current = parent
         for (i in 0 until segs.size - 1) {
@@ -2327,7 +2378,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 .firstOrNull { it.userObject == seg }
                 ?: DefaultMutableTreeNode(seg).also { current.add(it) }
         }
-        current.add(DefaultMutableTreeNode(BranchInfo(path, segs.last(), active, tracking, ahead, behind)))
+        current.add(DefaultMutableTreeNode(BranchInfo(path, segs.last(), active, tracking, ahead, behind, inWorktree)))
     }
 
     /**
@@ -2638,7 +2689,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             idx++
         }
         branchTreeModel.nodeStructureChanged(stashesNode)
-        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        restoreSidebarExpansion()
     }
 
     private fun applyTags(output: String) {
@@ -2648,7 +2699,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             if (name.isNotBlank()) tagsNode.add(DefaultMutableTreeNode(TagInfo(name)))
         }
         branchTreeModel.nodeStructureChanged(tagsNode)
-        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        restoreSidebarExpansion()
     }
 
     private fun applyWorktrees(entries: List<Git.WorktreeEntry>) {
@@ -2659,7 +2710,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             ))
         }
         branchTreeModel.nodeStructureChanged(worktreesNode)
-        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        restoreSidebarExpansion()
     }
 
     // ── Toolbar git actions ───────────────────────────────────────────────────
@@ -2805,7 +2856,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     fun openRemote()   = Thread { (OS.BROWSER  + git.remoteUrl().output).execute() }.start()
 
     fun selectCommit(hash: String) {
-        val idx = filteredCommits.indexOfFirst { it.hash == hash }
+        val idx = filteredCommits.indexOfFirst { it.hash == hash || it.hash.startsWith(hash) || hash.startsWith(it.hash) }
         if (idx >= 0) {
             switchCard(CARD_HISTORY)
             commitTable.selectionModel.setSelectionInterval(idx, idx)
@@ -2867,6 +2918,14 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
 
     // ── File blame ────────────────────────────────────────────────────────────
 
+    private data class BlameLine(
+        val hash: String,
+        val author: String,
+        val date: String,
+        val lineNum: Int,
+        val code: String
+    )
+
     private fun showBlame(file: String, rev: String?) {
         diffFileNameLabel.text = "$file  (blame)"
         object : SwingWorker<String, Void>() {
@@ -2879,13 +2938,122 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
         }.execute()
     }
 
-    private fun buildBlameView(blameOutput: String): JTextArea =
-        JTextArea(blameOutput).apply {
+    private fun buildBlameView(blameOutput: String): JComponent {
+        val regex = Regex("""^(\^?[0-9a-f]+)\s+\((.+?)\s+(\d{4}-\d{2}-\d{2})\s+(\d+)\)\s?(.*)$""")
+        val lines = blameOutput.lines().mapNotNull { line ->
+            val m = regex.find(line) ?: return@mapNotNull null
+            BlameLine(
+                hash    = m.groupValues[1].trimStart('^'),
+                author  = m.groupValues[2].trim(),
+                date    = m.groupValues[3],
+                lineNum = m.groupValues[4].toIntOrNull() ?: 0,
+                code    = m.groupValues[5]
+            )
+        }
+        if (lines.isEmpty()) return JTextArea(blameOutput).apply {
             isEditable = false
             font       = Font(com.gitnarwhal.utils.Settings.diffFontFamily, Font.PLAIN, com.gitnarwhal.utils.Settings.diffFontSize)
             background = UIManager.getColor("EditorPane.background") ?: Color(0x2B, 0x2B, 0x2B)
             foreground = UIManager.getColor("Label.foreground") ?: Color.WHITE
         }
+
+        val bgColor   = UIManager.getColor("EditorPane.background")     ?: Color(0x2B, 0x2B, 0x2B)
+        val fgColor   = UIManager.getColor("Label.foreground")           ?: Color.WHITE
+        val mutedFg   = UIManager.getColor("Label.disabledForeground")   ?: Color.GRAY
+        val selBg     = UIManager.getColor("List.selectionBackground")   ?: Color(0x26, 0x4F, 0x78)
+        val monoFont  = Font(com.gitnarwhal.utils.Settings.diffFontFamily, Font.PLAIN, com.gitnarwhal.utils.Settings.diffFontSize)
+
+        val hashColors = LinkedHashMap<String, Color>()
+        var ci = 0
+        lines.forEach { hashColors.getOrPut(it.hash) { GRAPH_PALETTE[ci++ % GRAPH_PALETTE.size] } }
+
+        val maxLn  = lines.maxOf { it.lineNum }.toString().length
+
+        val model = DefaultListModel<BlameLine>().apply { lines.forEach { addElement(it) } }
+
+        val cellH = monoFont.size + 6
+
+        val list = object : JList<BlameLine>(model), Scrollable {
+            override fun getPreferredScrollableViewportSize() = preferredSize
+            override fun getScrollableUnitIncrement(r: Rectangle, o: Int, d: Int) = cellH
+            override fun getScrollableBlockIncrement(r: Rectangle, o: Int, d: Int) = r.height
+            override fun getScrollableTracksViewportWidth()  = true
+            override fun getScrollableTracksViewportHeight() = false
+        }
+        list.selectionMode    = ListSelectionModel.SINGLE_SELECTION
+        list.background       = bgColor
+        list.fixedCellHeight  = cellH
+
+        list.setCellRenderer(object : ListCellRenderer<BlameLine> {
+            private val stamp = object : JComponent() {
+                var entry: BlameLine? = null
+                var selected = false
+
+                override fun paintComponent(g: Graphics) {
+                    val bl = entry ?: return
+                    val g2 = g.create() as Graphics2D
+                    g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+                        RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+                    g2.font = monoFont
+                    val fm = g2.fontMetrics
+
+                    g2.color = if (selected) selBg else bgColor
+                    g2.fillRect(0, 0, width, height)
+
+                    val y = fm.ascent + (height - fm.height) / 2
+                    var x = 4
+
+                    g2.color = hashColors[bl.hash] ?: Color.GRAY
+                    val hashStr = bl.hash.take(8)
+                    g2.drawString(hashStr, x, y)
+                    x += fm.stringWidth(hashStr) + fm.charWidth(' ')
+
+                    g2.color = mutedFg
+                    val authorStr = bl.author.take(14).padEnd(15)
+                    g2.drawString(authorStr, x, y)
+                    x += fm.stringWidth(authorStr)
+
+                    val dateStr = "${bl.date}  "
+                    g2.drawString(dateStr, x, y)
+                    x += fm.stringWidth(dateStr)
+
+                    val lnStr = bl.lineNum.toString().padStart(maxLn)
+                    g2.drawString(lnStr, x, y)
+                    x += fm.stringWidth(lnStr)
+
+                    g2.color = mutedFg
+                    val sep = " │ "
+                    g2.drawString(sep, x, y)
+                    x += fm.stringWidth(sep)
+
+                    g2.color = fgColor
+                    g2.drawString(bl.code, x, y)
+
+                    g2.dispose()
+                }
+            }
+
+            override fun getListCellRendererComponent(
+                list: JList<out BlameLine>, value: BlameLine,
+                index: Int, isSelected: Boolean, cellHasFocus: Boolean
+            ): Component {
+                stamp.entry    = value
+                stamp.selected = isSelected
+                stamp.preferredSize = Dimension(list.width.coerceAtLeast(1), cellH)
+                return stamp
+            }
+        })
+
+        list.toolTipText = "Click a line to navigate to its commit in History"
+        list.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                val idx = list.locationToIndex(e.point)
+                if (idx >= 0) selectCommit(model.getElementAt(idx).hash)
+            }
+        })
+
+        return list
+    }
 
     private fun menuItem(text: String, action: () -> Unit) =
         JMenuItem(text).apply { addActionListener { action() } }
