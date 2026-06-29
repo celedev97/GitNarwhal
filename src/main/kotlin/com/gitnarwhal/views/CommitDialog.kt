@@ -24,14 +24,16 @@ class CommitDialog(
     private val stagedList   = JList(stagedModel).apply { cellRenderer = FileStatusCellRenderer() }
     private val unstagedList = JList(unstagedModel).apply { cellRenderer = FileStatusCellRenderer() }
     private val messageArea = JTextArea(6, 60).apply { lineWrap = true; wrapStyleWord = true }
-    private val commitBtn = JButton("Commit")
+    private val commitBtn  = JButton("Commit")
     private val amendCheck = JCheckBox("Amend previous commit")
+    private val pushCheck  = JCheckBox("Push after commit")
 
     init {
         defaultCloseOperation = DISPOSE_ON_CLOSE
         layout = BorderLayout(8, 8)
 
         amendCheck.addActionListener { onAmendToggled() }
+        pushCheck.addActionListener  { commitBtn.text = if (pushCheck.isSelected) "Commit & Push" else "Commit" }
 
         add(buildFilesPanel(), BorderLayout.CENTER)
         add(buildSouthPanel(),  BorderLayout.SOUTH)
@@ -90,6 +92,7 @@ class CommitDialog(
 
         val buttons = JPanel(FlowLayout(FlowLayout.RIGHT, 8, 4))
         buttons.add(amendCheck)
+        buttons.add(pushCheck)
         val cancel = JButton("Cancel").apply { addActionListener { dispose() } }
         commitBtn.addActionListener { doCommit() }
         buttons.add(cancel); buttons.add(commitBtn)
@@ -148,6 +151,12 @@ class CommitDialog(
             git.commit(msg)
         }
         if (result.success) {
+            if (pushCheck.isSelected) {
+                val pushResult = git.push()
+                if (!pushResult.success) {
+                    JOptionPane.showMessageDialog(this, "Commit succeeded but push failed:\n\n${pushResult.output}", "Push", JOptionPane.ERROR_MESSAGE)
+                }
+            }
             onSuccess()
             dispose()
         } else {
