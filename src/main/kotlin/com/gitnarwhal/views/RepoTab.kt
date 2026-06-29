@@ -1548,15 +1548,27 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             if (!r.success) showError("Rename failed", r.output); refresh()
         })
         menu.add(menuItem("Delete") {
-            if (confirm("Delete branch '$branchFullName'? (refuses if not merged)")) {
-                val r = git.deleteBranch(branchFullName, force = false)
-                if (!r.success) {
-                    if (confirm("Branch not merged. Force delete '$branchFullName'?")) {
-                        val rf = git.deleteBranch(branchFullName, force = true)
-                        if (!rf.success) showError("Force delete failed", rf.output)
-                    }
+            if (!isLocal) {
+                // Remote branch: parse "remote/branch" and use git push --delete
+                val slash = branchFullName.indexOf('/')
+                val remote = if (slash >= 0) branchFullName.substring(0, slash) else "origin"
+                val branch = if (slash >= 0) branchFullName.substring(slash + 1) else branchFullName
+                if (confirm("Delete remote branch '$branchFullName'?")) {
+                    val r = git.deleteRemoteBranch(remote, branch)
+                    if (!r.success) showError("Delete remote branch failed", r.output)
+                    refresh()
                 }
-                refresh()
+            } else {
+                if (confirm("Delete branch '$branchFullName'? (refuses if not merged)")) {
+                    val r = git.deleteBranch(branchFullName, force = false)
+                    if (!r.success) {
+                        if (confirm("Branch not merged. Force delete '$branchFullName'?")) {
+                            val rf = git.deleteBranch(branchFullName, force = true)
+                            if (!rf.success) showError("Force delete failed", rf.output)
+                        }
+                    }
+                    refresh()
+                }
             }
         })
         return menu

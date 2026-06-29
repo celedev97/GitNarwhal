@@ -241,6 +241,7 @@ class Git(val repo: String) {
 
     //region commit / sync
     fun commit(message: String)   = git("commit", "-m", message)
+    fun lastCommitMessage(): String = git("log", "-1", "--format=%B").output.trim()
     fun commitAmend(message: String? = null) =
         if (message != null) git("commit", "--amend", "-m", message) else git("commit", "--amend", "--no-edit")
 
@@ -344,6 +345,7 @@ class Git(val repo: String) {
     fun tagDelete(name: String)                          = git("tag", "-d", name)
     fun pushTag(remote: String = "origin", tag: String)  = git("push", remote, tag)
     fun pushDeleteTag(remote: String, tag: String)       = git("push", remote, "--delete", tag)
+    fun deleteRemoteBranch(remote: String, branch: String) = git("push", remote, "--delete", branch)
     //endregion
 
     //region worktree

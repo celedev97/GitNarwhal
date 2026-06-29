@@ -31,6 +31,8 @@ class CommitDialog(
         defaultCloseOperation = DISPOSE_ON_CLOSE
         layout = BorderLayout(8, 8)
 
+        amendCheck.addActionListener { onAmendToggled() }
+
         add(buildFilesPanel(), BorderLayout.CENTER)
         add(buildSouthPanel(),  BorderLayout.SOUTH)
 
@@ -95,6 +97,24 @@ class CommitDialog(
         south.add(msgPanel, BorderLayout.CENTER)
         south.add(buttons,  BorderLayout.SOUTH)
         return south
+    }
+
+    private fun onAmendToggled() {
+        if (!amendCheck.isSelected) return
+        val lastMsg = git.lastCommitMessage()
+        val current = messageArea.text.trim()
+        if (current.isEmpty()) {
+            messageArea.text = lastMsg
+        } else if (current != lastMsg) {
+            val choice = JOptionPane.showConfirmDialog(
+                this,
+                "Do you want to replace the current commit message with the previous commit message?",
+                "Amend",
+                JOptionPane.YES_NO_OPTION
+            )
+            if (choice == JOptionPane.YES_OPTION) messageArea.text = lastMsg
+        }
+        refresh()
     }
 
     fun refresh() {
