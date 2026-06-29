@@ -345,7 +345,6 @@ class Git(val repo: String) {
     fun tagDelete(name: String)                          = git("tag", "-d", name)
     fun pushTag(remote: String = "origin", tag: String)  = git("push", remote, tag)
     fun pushDeleteTag(remote: String, tag: String)       = git("push", remote, "--delete", tag)
-    fun deleteRemoteBranch(remote: String, branch: String) = git("push", remote, "--delete", branch)
     //endregion
 
     //region worktree

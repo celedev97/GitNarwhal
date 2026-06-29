@@ -29,7 +29,8 @@ class PullOverlay(private val git: Git) : JPanel(null) {
     private var savedGlassPane: Component? = null
     private var rootPane: JRootPane?       = null
     private var onDone: (() -> Unit)?      = null
-    private var pendingBranchSelection: String? = null
+
+    private val remoteListener = java.awt.event.ActionListener { onRemoteChanged() }
 
     private val card: JPanel
 
@@ -40,7 +41,7 @@ class PullOverlay(private val git: Git) : JPanel(null) {
         addMouseListener(object : MouseAdapter() {})
         addMouseMotionListener(object : MouseMotionAdapter() {})
 
-        remoteCombo.addActionListener { onRemoteChanged() }
+        remoteCombo.addActionListener(remoteListener)
 
         rebaseCk.addActionListener {
             val rebase = rebaseCk.isSelected
@@ -173,16 +174,13 @@ class PullOverlay(private val git: Git) : JPanel(null) {
             }
             override fun done() {
                 val d = try { get() } catch (e: Exception) { return }
-                pendingBranchSelection = d.trackingBranch
+                remoteCombo.removeActionListener(remoteListener)
                 remoteCombo.removeAllItems(); d.remotes.forEach { remoteCombo.addItem(it) }
                 if (d.trackingRemote != null) remoteCombo.selectedItem = d.trackingRemote
-                // If onRemoteChanged didn't consume the pending selection (same remote already selected), apply it now
-                if (pendingBranchSelection != null) {
-                    remoteBranchCombo.removeAllItems(); d.remoteBranches.forEach { remoteBranchCombo.addItem(it) }
-                    remoteBranchCombo.selectedItem = pendingBranchSelection
-                    if (remoteBranchCombo.selectedItem == null) remoteBranchCombo.selectedIndex = -1
-                    pendingBranchSelection = null
-                }
+                remoteCombo.addActionListener(remoteListener)
+                remoteBranchCombo.removeAllItems(); d.remoteBranches.forEach { remoteBranchCombo.addItem(it) }
+                if (d.trackingBranch != null) remoteBranchCombo.selectedItem = d.trackingBranch
+                else remoteBranchCombo.selectedIndex = -1
                 urlField.text         = d.url
                 localBranchLabel.text = d.currentBranch.ifBlank { "—" }
             }
@@ -191,7 +189,6 @@ class PullOverlay(private val git: Git) : JPanel(null) {
 
     private fun onRemoteChanged() {
         val remote = remoteCombo.selectedItem as? String ?: return
-        val branchToSelect = pendingBranchSelection.also { pendingBranchSelection = null }
         object : SwingWorker<Pair<String, List<String>>, Void>() {
             override fun doInBackground() =
                 git.remoteUrl(remote).output.trim() to git.remoteBranchNames(remote)
@@ -199,10 +196,6 @@ class PullOverlay(private val git: Git) : JPanel(null) {
                 val (url, branches) = try { get() } catch (e: Exception) { return }
                 urlField.text = url
                 remoteBranchCombo.removeAllItems(); branches.forEach { remoteBranchCombo.addItem(it) }
-                if (branchToSelect != null) {
-                    remoteBranchCombo.selectedItem = branchToSelect
-                    if (remoteBranchCombo.selectedItem == null) remoteBranchCombo.selectedIndex = -1
-                }
             }
         }.execute()
     }

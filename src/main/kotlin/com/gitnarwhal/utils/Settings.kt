@@ -54,8 +54,6 @@ object Settings : JSONObject(settingsJSON) {
     var columnWidths         by JSONSetting(JSONObject().also {
         it.put("graph", 80); it.put("date", 135); it.put("committer", 120); it.put("commit", 70)
     })
-    var sidebarSections      by JSONSetting(JSONObject())
-
 }
 
 fun Settings.save() {
