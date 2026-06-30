@@ -130,6 +130,9 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     private val submodulesNode     = DefaultMutableTreeNode("SUBMODULES")
     private val worktreesNode      = DefaultMutableTreeNode("WORKTREES")
     private var isHeadDetached     = false
+    private var restoringExpansion = false
+    // Expanded sub-folder paths (below section level) kept in memory across refreshes
+    private val expandedFolderPaths = mutableSetOf<List<Any>>()
 
     private val allSubmodules      = mutableListOf<SubmoduleInfo>()
     private val branchTreeModel    = DefaultTreeModel(branchRoot)
@@ -250,16 +253,30 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
                 }
             }
             addTreeExpansionListener(object : javax.swing.event.TreeExpansionListener {
-                override fun treeExpanded(event: javax.swing.event.TreeExpansionEvent)  = saveSectionExpansion(event, true)
-                override fun treeCollapsed(event: javax.swing.event.TreeExpansionEvent) = saveSectionExpansion(event, false)
-                private fun saveSectionExpansion(event: javax.swing.event.TreeExpansionEvent, expanded: Boolean) {
+                override fun treeExpanded(event: javax.swing.event.TreeExpansionEvent)  = onExpansionChanged(event, true)
+                override fun treeCollapsed(event: javax.swing.event.TreeExpansionEvent) = onExpansionChanged(event, false)
+                private fun onExpansionChanged(event: javax.swing.event.TreeExpansionEvent, expanded: Boolean) {
+                    if (restoringExpansion) return
                     val node = event.path.lastPathComponent as? DefaultMutableTreeNode ?: return
-                    if (node.parent != branchRoot) return
-                    val label = node.userObject as? String ?: return
-                    val sections = Settings.sidebarSections
-                    val obj = sections.optJSONObject(path) ?: JSONObject().also { sections.put(path, it) }
-                    obj.put(label, expanded)
-                    Settings.save()
+                    // Persist section-level state to disk
+                    if (node.parent == branchRoot) {
+                        val label = node.userObject as? String ?: return
+                        val tabEntry = Settings.openTabs.filterIsInstance<JSONObject>().find { it.getString("path") == path } ?: return
+                        val sections = tabEntry.optJSONObject("sidebarSections") ?: JSONObject().also { tabEntry.put("sidebarSections", it) }
+                        sections.put(label, expanded)
+                        Settings.save()
+                        return
+                    }
+                    // Track sub-folder expansion state in memory (survives refreshes)
+                    val userObj = node.userObject
+                    if (userObj !is String && userObj !is SubmoduleFolderNode) return
+                    val pathArray = event.path.path
+                    val segments = mutableListOf<Any>()
+                    for (i in 1 until pathArray.size) {
+                        segments.add((pathArray[i] as? DefaultMutableTreeNode)?.userObject ?: return)
+                    }
+                    if (expanded) expandedFolderPaths.add(segments)
+                    else expandedFolderPaths.remove(segments)
                 }
             })
         }
@@ -1548,15 +1565,26 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             if (!r.success) showError("Rename failed", r.output); refresh()
         })
         menu.add(menuItem("Delete") {
-            if (confirm("Delete branch '$branchFullName'? (refuses if not merged)")) {
-                val r = git.deleteBranch(branchFullName, force = false)
-                if (!r.success) {
-                    if (confirm("Branch not merged. Force delete '$branchFullName'?")) {
-                        val rf = git.deleteBranch(branchFullName, force = true)
-                        if (!rf.success) showError("Force delete failed", rf.output)
-                    }
+            if (!isLocal) {
+                val parts  = branchFullName.split("/", limit = 2)
+                val remote = parts[0]
+                val branch = if (parts.size > 1) parts[1] else branchFullName
+                if (confirm("Delete remote branch '$branchFullName'?")) {
+                    val r = git.pushDeleteTag(remote, branch)
+                    if (!r.success) showError("Delete remote branch failed", r.output)
+                    refresh()
                 }
-                refresh()
+            } else {
+                if (confirm("Delete branch '$branchFullName'? (refuses if not merged)")) {
+                    val r = git.deleteBranch(branchFullName, force = false)
+                    if (!r.success) {
+                        if (confirm("Branch not merged. Force delete '$branchFullName'?")) {
+                            val rf = git.deleteBranch(branchFullName, force = true)
+                            if (!rf.success) showError("Force delete failed", rf.output)
+                        }
+                    }
+                    refresh()
+                }
             }
         })
         return menu
@@ -1570,7 +1598,8 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
     // ── Sidebar ───────────────────────────────────────────────────────────────
 
     private fun restoreSidebarExpansion() {
-        val saved = Settings.sidebarSections.optJSONObject(path) ?: JSONObject()
+        val tabEntry = Settings.openTabs.filterIsInstance<JSONObject>().find { it.getString("path") == path }
+        val saved = tabEntry?.optJSONObject("sidebarSections") ?: JSONObject()
         val sections = mapOf(
             "BRANCHES"   to localBranchesNode,
             "TAGS"       to tagsNode,
@@ -1579,12 +1608,23 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             "SUBMODULES" to submodulesNode,
             "WORKTREES"  to worktreesNode
         )
-        for (i in 0 until branchTree.rowCount) branchTree.expandRow(i)
+        restoringExpansion = true
+        branchTree.expandPath(TreePath(branchRoot.path))
         for ((name, node) in sections) {
-            if (!saved.optBoolean(name, true)) {
-                branchTree.collapsePath(TreePath(node.path))
-            }
+            if (saved.optBoolean(name, true)) branchTree.expandPath(TreePath(node.path))
+            else branchTree.collapsePath(TreePath(node.path))
         }
+        // Restore sub-folder expansion state
+        outer@ for (segments in expandedFolderPaths) {
+            var node: DefaultMutableTreeNode = branchRoot
+            for (seg in segments) {
+                node = node.children().asSequence()
+                    .filterIsInstance<DefaultMutableTreeNode>()
+                    .firstOrNull { it.userObject == seg } ?: continue@outer
+            }
+            branchTree.expandPath(TreePath(node.path))
+        }
+        restoringExpansion = false
     }
 
     private fun buildSidebar(): JPanel {

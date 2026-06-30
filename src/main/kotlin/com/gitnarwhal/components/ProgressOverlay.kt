@@ -2,6 +2,9 @@ package com.gitnarwhal.components
 
 import java.awt.*
 import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import java.awt.event.MouseMotionAdapter
+import java.net.URI
 import javax.swing.*
 import javax.swing.text.SimpleAttributeSet
 import javax.swing.text.StyleConstants
@@ -18,12 +21,16 @@ import javax.swing.text.StyleConstants
  */
 class ProgressOverlay : JPanel(null) {
 
+    private val urlRegex   = Regex("""https?://\S+""")
+    private object UrlAttrKey
+
     // ANSI parser state — persists across appendOutput calls to handle multi-line streams
     private var ansiFg: Color? = null
     private var ansiBold = false
 
     private val statusLabel  = JLabel("Working…")
     private val progressBar  = JProgressBar().apply { isIndeterminate = true }
+    private val defaultProgressColor = progressBar.foreground
     private val showOutputCk = JCheckBox("Show output")
     private val outputPane   = JTextPane().apply {
         isEditable = false
@@ -70,6 +77,24 @@ class ProgressOverlay : JPanel(null) {
         // Block all mouse events on the backdrop so the UI underneath is frozen
         addMouseListener(object : MouseAdapter() {})
         addMouseMotionListener(object : java.awt.event.MouseMotionAdapter() {})
+
+        outputPane.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                val pos   = outputPane.viewToModel2D(e.point).toInt()
+                val url   = outputPane.styledDocument.getCharacterElement(pos)
+                    .attributes.getAttribute(UrlAttrKey) as? String ?: return
+                runCatching { Desktop.getDesktop().browse(URI(url)) }
+            }
+        })
+        outputPane.addMouseMotionListener(object : MouseMotionAdapter() {
+            override fun mouseMoved(e: MouseEvent) {
+                val pos    = outputPane.viewToModel2D(e.point).toInt()
+                val hasUrl = outputPane.styledDocument.getCharacterElement(pos)
+                    .attributes.getAttribute(UrlAttrKey) != null
+                outputPane.cursor = if (hasUrl) Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+                                    else Cursor.getDefaultCursor()
+            }
+        })
     }
 
     private var savedGlassPane: Component? = null
@@ -80,9 +105,10 @@ class ProgressOverlay : JPanel(null) {
         this.rootPane  = rp
         this.onDismiss = onDismiss
 
-        statusLabel.text          = title
+        statusLabel.text            = title
         progressBar.isIndeterminate = true
-        closeBtn.isEnabled        = false
+        progressBar.foreground      = defaultProgressColor
+        closeBtn.isEnabled          = false
         outputScroll.isVisible    = false
         showOutputCk.isSelected   = false
         outputPane.text           = ""
@@ -97,6 +123,7 @@ class ProgressOverlay : JPanel(null) {
     fun finish(output: String, success: Boolean) {
         progressBar.isIndeterminate = false
         progressBar.value      = 100
+        progressBar.foreground = if (success) Color(0x4C, 0xAF, 0x50) else Color(0xF4, 0x43, 0x36)
         statusLabel.text       = if (success) "Done." else "Failed."
         ansiFg = null; ansiBold = false
         outputPane.text = ""
@@ -164,17 +191,32 @@ class ProgressOverlay : JPanel(null) {
     }
 
     private fun insertStyled(text: String) {
-        val attrs = SimpleAttributeSet()
+        val attrs    = SimpleAttributeSet()
         ansiFg?.let { StyleConstants.setForeground(attrs, it) }
         if (ansiBold) StyleConstants.setBold(attrs, true)
-        val doc = outputPane.styledDocument
-        doc.insertString(doc.length, text, attrs)
+        val doc      = outputPane.styledDocument
+        val insertAt = doc.length
+        doc.insertString(insertAt, text, attrs)
+        applyUrlStyles(insertAt, text)
+    }
+
+    private fun applyUrlStyles(startOffset: Int, text: String) {
+        for (match in urlRegex.findAll(text)) {
+            val attrs = SimpleAttributeSet()
+            StyleConstants.setForeground(attrs, Color(0x55, 0x88, 0xFF))
+            StyleConstants.setUnderline(attrs, true)
+            attrs.addAttribute(UrlAttrKey, match.value)
+            outputPane.styledDocument.setCharacterAttributes(
+                startOffset + match.range.first, match.value.length, attrs, false
+            )
+        }
     }
 
     /** Call instead of [finish] when output was already streamed via [appendOutput]. */
     fun finishStreaming(success: Boolean) {
         progressBar.isIndeterminate = false
         progressBar.value  = 100
+        progressBar.foreground = if (success) Color(0x4C, 0xAF, 0x50) else Color(0xF4, 0x43, 0x36)
         statusLabel.text   = if (success) "Done." else "Failed."
         closeBtn.isEnabled = true
         if (!success) {

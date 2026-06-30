@@ -133,7 +133,7 @@ private fun buildMenuBar(frame: JFrame, mainView: MainView): JMenuBar {
         add(item("About GitNarwhal…") {
             javax.swing.JOptionPane.showMessageDialog(
                 frame,
-                "GitNarwhal\nVersion: ${UpdateService.currentVersion}\n\nhttps://github.com/celedev97/GitNarwhal",
+                "GitNarwhal\nVersion: ${UpdateService.currentVersion}\n\nhttps://github.com/git-narwhal/GitNarwhal",
                 "About GitNarwhal",
                 javax.swing.JOptionPane.INFORMATION_MESSAGE
             )

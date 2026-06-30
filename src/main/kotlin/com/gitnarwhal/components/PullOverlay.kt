@@ -30,6 +30,8 @@ class PullOverlay(private val git: Git) : JPanel(null) {
     private var rootPane: JRootPane?       = null
     private var onDone: (() -> Unit)?      = null
 
+    private val remoteListener = java.awt.event.ActionListener { onRemoteChanged() }
+
     private val card: JPanel
 
     // ── Init ──────────────────────────────────────────────────────────────────
@@ -39,7 +41,7 @@ class PullOverlay(private val git: Git) : JPanel(null) {
         addMouseListener(object : MouseAdapter() {})
         addMouseMotionListener(object : MouseMotionAdapter() {})
 
-        remoteCombo.addActionListener { onRemoteChanged() }
+        remoteCombo.addActionListener(remoteListener)
 
         rebaseCk.addActionListener {
             val rebase = rebaseCk.isSelected
@@ -172,10 +174,11 @@ class PullOverlay(private val git: Git) : JPanel(null) {
             }
             override fun done() {
                 val d = try { get() } catch (e: Exception) { return }
+                remoteCombo.removeActionListener(remoteListener)
                 remoteCombo.removeAllItems(); d.remotes.forEach { remoteCombo.addItem(it) }
                 if (d.trackingRemote != null) remoteCombo.selectedItem = d.trackingRemote
+                remoteCombo.addActionListener(remoteListener)
                 remoteBranchCombo.removeAllItems(); d.remoteBranches.forEach { remoteBranchCombo.addItem(it) }
-                // Pre-select tracking branch, or clear selection if none
                 if (d.trackingBranch != null) remoteBranchCombo.selectedItem = d.trackingBranch
                 else remoteBranchCombo.selectedIndex = -1
                 urlField.text         = d.url

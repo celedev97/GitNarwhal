@@ -241,6 +241,7 @@ class Git(val repo: String) {
 
     //region commit / sync
     fun commit(message: String)   = git("commit", "-m", message)
+    fun lastCommitMessage(): String = git("log", "-1", "--format=%B").output.trim()
     fun commitAmend(message: String? = null) =
         if (message != null) git("commit", "--amend", "-m", message) else git("commit", "--amend", "--no-edit")
 
