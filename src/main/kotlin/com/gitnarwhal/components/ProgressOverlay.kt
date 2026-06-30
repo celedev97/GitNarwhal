@@ -24,6 +24,7 @@ class ProgressOverlay : JPanel(null) {
 
     private val statusLabel  = JLabel("Working…")
     private val progressBar  = JProgressBar().apply { isIndeterminate = true }
+    private val defaultProgressColor = progressBar.foreground
     private val showOutputCk = JCheckBox("Show output")
     private val outputPane   = JTextPane().apply {
         isEditable = false
@@ -80,9 +81,10 @@ class ProgressOverlay : JPanel(null) {
         this.rootPane  = rp
         this.onDismiss = onDismiss
 
-        statusLabel.text          = title
+        statusLabel.text            = title
         progressBar.isIndeterminate = true
-        closeBtn.isEnabled        = false
+        progressBar.foreground      = defaultProgressColor
+        closeBtn.isEnabled          = false
         outputScroll.isVisible    = false
         showOutputCk.isSelected   = false
         outputPane.text           = ""
@@ -97,6 +99,7 @@ class ProgressOverlay : JPanel(null) {
     fun finish(output: String, success: Boolean) {
         progressBar.isIndeterminate = false
         progressBar.value      = 100
+        progressBar.foreground = if (success) Color(0x4C, 0xAF, 0x50) else Color(0xF4, 0x43, 0x36)
         statusLabel.text       = if (success) "Done." else "Failed."
         ansiFg = null; ansiBold = false
         outputPane.text = ""
@@ -175,6 +178,7 @@ class ProgressOverlay : JPanel(null) {
     fun finishStreaming(success: Boolean) {
         progressBar.isIndeterminate = false
         progressBar.value  = 100
+        progressBar.foreground = if (success) Color(0x4C, 0xAF, 0x50) else Color(0xF4, 0x43, 0x36)
         statusLabel.text   = if (success) "Done." else "Failed."
         closeBtn.isEnabled = true
         if (!success) {
