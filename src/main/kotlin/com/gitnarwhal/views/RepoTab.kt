@@ -1044,7 +1044,7 @@ class RepoTab(var path: String, val tabTitle: String) : JPanel(BorderLayout()) {
             override fun getPreferredScrollableViewportSize() = preferredSize
             override fun getScrollableUnitIncrement(r: Rectangle, o: Int, d: Int) = 16
             override fun getScrollableBlockIncrement(r: Rectangle, o: Int, d: Int) = r.height
-            override fun getScrollableTracksViewportWidth()  = false
+            override fun getScrollableTracksViewportWidth()  = parent?.let { preferredSize.width < it.width } ?: false
             override fun getScrollableTracksViewportHeight() = false
         }.apply {
             layout     = BoxLayout(this, BoxLayout.Y_AXIS)
