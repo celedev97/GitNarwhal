@@ -2,6 +2,9 @@ package com.gitnarwhal.components
 
 import java.awt.*
 import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import java.awt.event.MouseMotionAdapter
+import java.net.URI
 import javax.swing.*
 import javax.swing.text.SimpleAttributeSet
 import javax.swing.text.StyleConstants
@@ -17,6 +20,9 @@ import javax.swing.text.StyleConstants
  *   overlay.finish(output, success)
  */
 class ProgressOverlay : JPanel(null) {
+
+    private val urlRegex   = Regex("""https?://\S+""")
+    private object UrlAttrKey
 
     // ANSI parser state — persists across appendOutput calls to handle multi-line streams
     private var ansiFg: Color? = null
@@ -71,6 +77,24 @@ class ProgressOverlay : JPanel(null) {
         // Block all mouse events on the backdrop so the UI underneath is frozen
         addMouseListener(object : MouseAdapter() {})
         addMouseMotionListener(object : java.awt.event.MouseMotionAdapter() {})
+
+        outputPane.addMouseListener(object : MouseAdapter() {
+            override fun mouseClicked(e: MouseEvent) {
+                val pos   = outputPane.viewToModel2D(e.point).toInt()
+                val url   = outputPane.styledDocument.getCharacterElement(pos)
+                    .attributes.getAttribute(UrlAttrKey) as? String ?: return
+                runCatching { Desktop.getDesktop().browse(URI(url)) }
+            }
+        })
+        outputPane.addMouseMotionListener(object : MouseMotionAdapter() {
+            override fun mouseMoved(e: MouseEvent) {
+                val pos    = outputPane.viewToModel2D(e.point).toInt()
+                val hasUrl = outputPane.styledDocument.getCharacterElement(pos)
+                    .attributes.getAttribute(UrlAttrKey) != null
+                outputPane.cursor = if (hasUrl) Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+                                    else Cursor.getDefaultCursor()
+            }
+        })
     }
 
     private var savedGlassPane: Component? = null
@@ -167,11 +191,25 @@ class ProgressOverlay : JPanel(null) {
     }
 
     private fun insertStyled(text: String) {
-        val attrs = SimpleAttributeSet()
+        val attrs    = SimpleAttributeSet()
         ansiFg?.let { StyleConstants.setForeground(attrs, it) }
         if (ansiBold) StyleConstants.setBold(attrs, true)
-        val doc = outputPane.styledDocument
-        doc.insertString(doc.length, text, attrs)
+        val doc      = outputPane.styledDocument
+        val insertAt = doc.length
+        doc.insertString(insertAt, text, attrs)
+        applyUrlStyles(insertAt, text)
+    }
+
+    private fun applyUrlStyles(startOffset: Int, text: String) {
+        for (match in urlRegex.findAll(text)) {
+            val attrs = SimpleAttributeSet()
+            StyleConstants.setForeground(attrs, Color(0x55, 0x88, 0xFF))
+            StyleConstants.setUnderline(attrs, true)
+            attrs.addAttribute(UrlAttrKey, match.value)
+            outputPane.styledDocument.setCharacterAttributes(
+                startOffset + match.range.first, match.value.length, attrs, false
+            )
+        }
     }
 
     /** Call instead of [finish] when output was already streamed via [appendOutput]. */
